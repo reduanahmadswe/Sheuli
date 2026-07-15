@@ -20,6 +20,19 @@ function StatCard({ label, value, hint }) {
   );
 }
 
+function formatInZone(iso, timezone) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleTimeString('en-US', {
+      timeZone: timezone,
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  } catch {
+    return new Date(iso).toLocaleTimeString();
+  }
+}
+
 export default function Overview() {
   const [connection, setConnection] = useState('initializing');
   const [qr, setQr] = useState(null);
@@ -31,6 +44,7 @@ export default function Overview() {
   });
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [scheduleStatus, setScheduleStatus] = useState({ mode: 'manual', active: false });
 
   const fetchStatus = async () => {
     try {
@@ -48,9 +62,15 @@ export default function Overview() {
     setAutoReplyEnabled(Boolean(data.autoReplyEnabled));
   };
 
+  const fetchSchedule = async () => {
+    const { data } = await api.get('/settings/schedule');
+    setScheduleStatus(data.status);
+  };
+
   useEffect(() => {
     fetchStatus();
     fetchSettings();
+    fetchSchedule();
 
     const socket = getSocket();
     const onStatus = ({ status }) => {
@@ -59,11 +79,13 @@ export default function Overview() {
     };
     const onQr = ({ qr: qrData }) => setQr(qrData);
     const onSettings = (settings) => setAutoReplyEnabled(Boolean(settings.autoReplyEnabled));
+    const onScheduleStatus = (status) => setScheduleStatus(status);
     const onStatsUpdated = () => fetchStatus();
 
     socket.on('whatsapp:status', onStatus);
     socket.on('whatsapp:qr', onQr);
     socket.on('settings:updated', onSettings);
+    socket.on('schedule:status', onScheduleStatus);
     socket.on('stats:updated', onStatsUpdated);
     socket.on('message:new', onStatsUpdated);
 
@@ -73,6 +95,7 @@ export default function Overview() {
       socket.off('whatsapp:status', onStatus);
       socket.off('whatsapp:qr', onQr);
       socket.off('settings:updated', onSettings);
+      socket.off('schedule:status', onScheduleStatus);
       socket.off('stats:updated', onStatsUpdated);
       socket.off('message:new', onStatsUpdated);
       clearInterval(interval);
@@ -80,6 +103,7 @@ export default function Overview() {
   }, []);
 
   const toggleAutoReply = async () => {
+    if (scheduleStatus.mode === 'schedule') return;
     setToggling(true);
     try {
       const { data } = await api.put('/settings', { autoReplyEnabled: !autoReplyEnabled });
@@ -90,6 +114,24 @@ export default function Overview() {
   };
 
   const statusInfo = STATUS_LABEL[connection] || STATUS_LABEL.initializing;
+  const isScheduleMode = scheduleStatus.mode === 'schedule';
+  const active = isScheduleMode ? scheduleStatus.active : autoReplyEnabled;
+  const nextChangeLabel = isScheduleMode ? formatInZone(scheduleStatus.nextChangeAt, scheduleStatus.timezone) : null;
+
+  let subtitle;
+  if (isScheduleMode) {
+    subtitle = active
+      ? nextChangeLabel
+        ? `Scheduled until ${nextChangeLabel}`
+        : 'Active on schedule'
+      : nextChangeLabel
+        ? `Will wake at ${nextChangeLabel}`
+        : 'Resting on schedule';
+  } else {
+    subtitle = active
+      ? 'Auto-replies are active for incoming chats.'
+      : 'Turn this on so Sheuli can reply while you’re away.';
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -124,35 +166,37 @@ export default function Overview() {
           )}
         </div>
 
-        {/* Master toggle */}
+        {/* Master toggle / schedule status */}
         <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-night-400/50 p-6 backdrop-blur-xl">
-          {autoReplyEnabled && (
+          {active && (
             <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-sheuli/20 blur-3xl animate-float" />
           )}
-          <p className="text-xs uppercase tracking-wide text-petal-dim">Master switch</p>
+          <p className="text-xs uppercase tracking-wide text-petal-dim">
+            {isScheduleMode ? 'Schedule' : 'Master switch'}
+          </p>
           <div className="mt-3 flex items-center justify-between">
             <div>
-              <p className={`text-xl font-bold ${autoReplyEnabled ? 'text-sheuli-light' : 'text-petal'}`}>
-                {autoReplyEnabled ? 'Sheuli is awake 🌸' : 'Sheuli is resting 🌙'}
+              <p className={`text-xl font-bold ${active ? 'text-sheuli-light' : 'text-petal'}`}>
+                {active ? 'Sheuli is awake 🌸' : 'Sheuli is resting 🌙'}
               </p>
-              <p className="mt-1 text-xs text-petal-dim">
-                {autoReplyEnabled
-                  ? 'Auto-replies are active for incoming chats.'
-                  : 'Turn this on so Sheuli can reply while you’re away.'}
-              </p>
+              <p className="mt-1 text-xs text-petal-dim">{subtitle}</p>
+              {isScheduleMode && (
+                <p className="mt-1 text-xs text-petal-dim/70">Schedule mode is controlling Sheuli right now.</p>
+              )}
             </div>
             <button
               onClick={toggleAutoReply}
-              disabled={toggling}
-              aria-pressed={autoReplyEnabled}
+              disabled={toggling || isScheduleMode}
+              aria-pressed={active}
+              title={isScheduleMode ? 'Switch to manual mode in Settings to control this toggle' : undefined}
               className={`relative h-8 w-16 shrink-0 rounded-full transition-colors duration-300 ${
-                autoReplyEnabled ? 'bg-sheuli shadow-glow' : 'bg-white/10'
-              } disabled:opacity-60`}
+                active ? 'bg-sheuli shadow-glow' : 'bg-white/10'
+              } ${isScheduleMode ? 'cursor-not-allowed opacity-50' : ''} disabled:opacity-50`}
             >
               <span
                 className={`absolute top-1 h-6 w-6 rounded-full bg-petal shadow transition-transform duration-300 ${
-                  autoReplyEnabled ? 'translate-x-9' : 'translate-x-1'
-                } ${autoReplyEnabled ? 'animate-bloom' : ''}`}
+                  active ? 'translate-x-9' : 'translate-x-1'
+                } ${active ? 'animate-bloom' : ''}`}
               />
             </button>
           </div>

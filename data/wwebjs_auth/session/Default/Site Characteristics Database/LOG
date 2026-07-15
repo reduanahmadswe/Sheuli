@@ -1,2 +1,3 @@
-2026/07/15-23:53:40.864 518 Creating DB E:\Sheuli\data\wwebjs_auth\session\Default\Site Characteristics Database since it was missing.
-2026/07/15-23:53:40.878 518 Reusing MANIFEST E:\Sheuli\data\wwebjs_auth\session\Default\Site Characteristics Database/MANIFEST-000001
+2026/07/16-01:06:58.340 5c80 Reusing MANIFEST E:\Sheuli\data\wwebjs_auth\session\Default\Site Characteristics Database/MANIFEST-000001
+2026/07/16-01:06:58.341 5c80 Recovering log #3
+2026/07/16-01:06:58.341 5c80 Reusing old log E:\Sheuli\data\wwebjs_auth\session\Default\Site Characteristics Database/000003.log 

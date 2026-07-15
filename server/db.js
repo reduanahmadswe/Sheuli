@@ -38,9 +38,49 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS processed_messages (
+    message_id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id);
   CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
 `);
+
+// ── Lightweight column migrations (SQLite has no "ADD COLUMN IF NOT EXISTS") ──
+
+function ensureColumn(table, column, definition) {
+  const existing = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!existing.some((col) => col.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+ensureColumn('contacts', 'intro_sent', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('contacts', 'memory_cleared_at', 'TEXT');
+ensureColumn('contacts', 'last_read_at', 'TEXT');
+
+// One-time upgrade: earlier versions persisted a systemPrompt without the
+// language-mirroring rule. If the stored value is still byte-for-byte that old
+// default (i.e. the owner never customized it), refresh it to the current
+// default so the language rule actually takes effect. A customized prompt is
+// never touched.
+const LEGACY_SYSTEM_PROMPT =
+  'তোমার নাম Sheuli (শিউলি)। তুমি Reduan-এর personal AI assistant। Reduan এখন busy বা ঘুমাচ্ছে। ' +
+  'ভদ্রভাবে, উষ্ণভাবে এবং সংক্ষেপে (১–২ লাইন) reply দাও। User বাংলায় লিখলে বাংলায়, ইংরেজিতে লিখলে ইংরেজিতে উত্তর দাও। ' +
+  "কোনো contact-এর সাথে session-এর প্রথম reply-তে নিজের পরিচয় দাও, যেমন: 'হাই! আমি Sheuli, Reduan-এর AI assistant 🌸 ও এখন available নেই...'। " +
+  'জরুরি বিষয় হলে call করতে বলো। Reduan-এর হয়ে কখনো কোনো promise বা commitment দিও না। কোনো personal/private তথ্য share করো না। ' +
+  'কেউ অভদ্র আচরণ করলেও ভদ্র থাকো।';
+
+{
+  const storedPrompt = db.prepare('SELECT value FROM settings WHERE key = ?').get('systemPrompt');
+  if (storedPrompt && storedPrompt.value === LEGACY_SYSTEM_PROMPT) {
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(
+      'systemPrompt',
+      config.defaults.systemPrompt
+    );
+  }
+}
 
 // ── Settings ────────────────────────────────────────────────────────────
 
@@ -66,12 +106,21 @@ export function setSetting(key, value) {
 
 export function getAllSettings() {
   const d = config.defaults;
+  // Legacy fallback: earlier versions stored a plain `scheduleEnabled` boolean.
+  // If a `mode` key hasn't been explicitly saved yet, honor that old value once
+  // so upgrading doesn't silently switch someone from schedule back to manual.
+  const legacyScheduleEnabled = getSetting('scheduleEnabled', false);
+  const defaultMode = legacyScheduleEnabled ? 'schedule' : d.mode;
+
   return {
     autoReplyEnabled: getSetting('autoReplyEnabled', d.autoReplyEnabled),
-    scheduleEnabled: getSetting('scheduleEnabled', d.scheduleEnabled),
+    mode: getSetting('mode', defaultMode),
     scheduleStart: getSetting('scheduleStart', d.scheduleStart),
     scheduleEnd: getSetting('scheduleEnd', d.scheduleEnd),
-    timezone: getSetting('timezone', config.timezone),
+    scheduleDays: getSetting('scheduleDays', d.scheduleDays),
+    // Timezone always comes from the server's TIMEZONE env var, never a stored
+    // setting — the VPS may run in a different zone than the schedule expects.
+    timezone: config.timezone,
     systemPrompt: getSetting('systemPrompt', d.systemPrompt),
     rateLimitPerHour: getSetting('rateLimitPerHour', d.rateLimitPerHour),
     whitelistMode: getSetting('whitelistMode', d.whitelistMode),
@@ -131,6 +180,71 @@ export function setContactFlag(id, field, value) {
   return getContactStmt.get(id);
 }
 
+export function setIntroSent(id, value) {
+  db.prepare('UPDATE contacts SET intro_sent = ? WHERE id = ?').run(value ? 1 : 0, id);
+}
+
+export function clearContactMemory(id) {
+  db.prepare("UPDATE contacts SET memory_cleared_at = datetime('now'), intro_sent = 0 WHERE id = ?").run(id);
+  return getContactStmt.get(id);
+}
+
+export function markContactRead(id) {
+  db.prepare("UPDATE contacts SET last_read_at = datetime('now') WHERE id = ?").run(id);
+}
+
+const HOURS_24_MS = 24 * 60 * 60 * 1000;
+
+export function isIntroDue(contact) {
+  if (!contact) return true;
+  if (!contact.intro_sent) return true;
+  if (!contact.last_message_at) return false;
+  const lastMessageMs = Date.parse(`${contact.last_message_at.replace(' ', 'T')}Z`);
+  if (Number.isNaN(lastMessageMs)) return false;
+  return Date.now() - lastMessageMs > HOURS_24_MS;
+}
+
+export function getChats(search = '') {
+  const pattern = `%${search}%`;
+  return db
+    .prepare(
+      `SELECT
+         c.id AS contactId,
+         c.name,
+         c.number,
+         c.blacklisted,
+         c.whitelisted,
+         lm.body AS lastMessageBody,
+         lm.direction AS lastMessageDirection,
+         lm.status AS lastMessageStatus,
+         lm.created_at AS lastMessageAt,
+         COALESCE((
+           SELECT COUNT(*) FROM messages um
+           WHERE um.contact_id = c.id AND um.direction = 'in'
+           AND um.created_at > COALESCE(c.last_read_at, '0001-01-01 00:00:00')
+         ), 0) AS unreadCount
+       FROM contacts c
+       LEFT JOIN messages lm ON lm.id = (
+         SELECT id FROM messages WHERE contact_id = c.id ORDER BY id DESC LIMIT 1
+       )
+       WHERE c.is_group = 0 AND (c.name LIKE ? OR c.number LIKE ?)
+       ORDER BY COALESCE(lm.created_at, c.created_at) DESC`
+    )
+    .all(pattern, pattern);
+}
+
+export function getContactMessages(contactId, { limit = 50, beforeId } = {}) {
+  let rows;
+  if (beforeId) {
+    rows = db
+      .prepare('SELECT * FROM messages WHERE contact_id = ? AND id < ? ORDER BY id DESC LIMIT ?')
+      .all(contactId, beforeId, limit);
+  } else {
+    rows = db.prepare('SELECT * FROM messages WHERE contact_id = ? ORDER BY id DESC LIMIT ?').all(contactId, limit);
+  }
+  return rows.reverse();
+}
+
 // ── Messages / logs ─────────────────────────────────────────────────────
 
 const insertMessageStmt = db.prepare(`
@@ -160,14 +274,32 @@ export function logMessage({
 }
 
 export function getRecentConversation(contactId, limit = 10) {
+  const contact = getContactStmt.get(contactId);
+  const clearedAt = contact?.memory_cleared_at || '0001-01-01 00:00:00';
   const rows = db
     .prepare(
       `SELECT direction, body, created_at FROM messages
        WHERE contact_id = ? AND direction IN ('in', 'out') AND status IN ('received', 'replied')
+       AND created_at > ?
        ORDER BY id DESC LIMIT ?`
     )
-    .all(contactId, limit * 2);
+    .all(contactId, clearedAt, limit * 2);
   return rows.reverse();
+}
+
+// ── Processed message de-duplication ───────────────────────────────────
+
+const hasProcessedMessageStmt = db.prepare('SELECT 1 FROM processed_messages WHERE message_id = ?');
+const markProcessedMessageStmt = db.prepare(
+  'INSERT OR IGNORE INTO processed_messages (message_id) VALUES (?)'
+);
+
+export function hasProcessedMessage(messageId) {
+  return Boolean(hasProcessedMessageStmt.get(messageId));
+}
+
+export function markMessageProcessed(messageId) {
+  markProcessedMessageStmt.run(messageId);
 }
 
 export function countRepliesInLastHour(contactId) {

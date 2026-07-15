@@ -1,2 +1,3 @@
-2026/07/15-23:53:40.884 cac Creating DB E:\Sheuli\data\wwebjs_auth\session\Default\shared_proto_db\metadata since it was missing.
-2026/07/15-23:53:40.902 cac Reusing MANIFEST E:\Sheuli\data\wwebjs_auth\session\Default\shared_proto_db\metadata/MANIFEST-000001
+2026/07/16-01:06:58.406 5c80 Reusing MANIFEST E:\Sheuli\data\wwebjs_auth\session\Default\shared_proto_db\metadata/MANIFEST-000001
+2026/07/16-01:06:58.406 5c80 Recovering log #3
+2026/07/16-01:06:58.406 5c80 Reusing old log E:\Sheuli\data\wwebjs_auth\session\Default\shared_proto_db\metadata/000003.log 

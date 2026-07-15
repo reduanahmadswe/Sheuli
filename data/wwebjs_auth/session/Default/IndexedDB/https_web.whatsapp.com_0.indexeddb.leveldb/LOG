@@ -1,23 +1,14 @@
-2026/07/15-23:53:43.639 cac Creating DB E:\Sheuli\data\wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb since it was missing.
-2026/07/15-23:53:43.644 cac Reusing MANIFEST E:\Sheuli\data\wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
-2026/07/15-23:54:08.860 cac Level-0 table #5: started
-2026/07/15-23:54:08.872 cac Level-0 table #5: 1048201 bytes OK
-2026/07/15-23:54:08.875 cac Delete type=0 #3
-2026/07/15-23:54:54.079 2130 Level-0 table #7: started
-2026/07/15-23:54:54.090 2130 Level-0 table #7: 1046291 bytes OK
-2026/07/15-23:54:54.093 2130 Delete type=0 #4
-2026/07/15-23:54:54.108 2130 Compacting 1@1 + 1@2 files
-2026/07/15-23:54:54.128 2130 Generated table #8@1: 19715 keys, 851932 bytes
-2026/07/15-23:54:54.128 2130 Compacted 1@1 + 1@2 files => 851932 bytes
-2026/07/15-23:54:54.131 2130 compacted to: files[ 0 0 1 0 0 0 0 ]
-2026/07/15-23:54:54.131 2130 Delete type=2 #5
-2026/07/15-23:54:54.131 2130 Delete type=2 #7
-2026/07/15-23:59:19.891 1b58 Level-0 table #10: started
-2026/07/15-23:59:19.903 1b58 Level-0 table #10: 1120701 bytes OK
-2026/07/15-23:59:19.907 1b58 Delete type=0 #6
-2026/07/15-23:59:23.156 1b58 Compacting 1@1 + 1@2 files
-2026/07/15-23:59:23.175 1b58 Generated table #11@1: 24390 keys, 1053997 bytes
-2026/07/15-23:59:23.175 1b58 Compacted 1@1 + 1@2 files => 1053997 bytes
-2026/07/15-23:59:23.177 1b58 compacted to: files[ 0 0 1 0 0 0 0 ]
-2026/07/15-23:59:23.177 1b58 Delete type=2 #8
-2026/07/15-23:59:23.177 1b58 Delete type=2 #10
+2026/07/16-01:06:58.778 5c80 Reusing MANIFEST E:\Sheuli\data\wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/07/16-01:06:58.778 5c80 Recovering log #313
+2026/07/16-01:06:58.803 5c80 Reusing old log E:\Sheuli\data\wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000313.log 
+2026/07/16-01:06:58.803 5c80 Delete type=2 #312
+2026/07/16-01:06:58.803 5c80 Delete type=2 #314
+2026/07/16-01:07:02.374 5c80 Level-0 table #318: started
+2026/07/16-01:07:02.385 5c80 Level-0 table #318: 1076781 bytes OK
+2026/07/16-01:07:02.387 5c80 Delete type=0 #313
+2026/07/16-01:07:07.530 5c80 Compacting 1@1 + 1@2 files
+2026/07/16-01:07:07.552 5c80 Generated table #319@1: 25511 keys, 1091067 bytes
+2026/07/16-01:07:07.552 5c80 Compacted 1@1 + 1@2 files => 1091067 bytes
+2026/07/16-01:07:07.553 5c80 compacted to: files[ 0 0 1 0 0 0 0 ]
+2026/07/16-01:07:07.553 5c80 Delete type=2 #315
+2026/07/16-01:07:07.553 5c80 Delete type=2 #318

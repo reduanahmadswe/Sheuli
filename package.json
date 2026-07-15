@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",
+    "test": "node server/tests/chatFilter.test.mjs && node server/tests/schedule.test.mjs",
     "dashboard:dev": "npm run dev --prefix dashboard",
     "dashboard:build": "npm run build --prefix dashboard",
     "install:all": "npm install && npm install --prefix dashboard",

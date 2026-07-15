@@ -1,7 +1,22 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api.js';
 
-const STATUS_OPTIONS = ['all', 'received', 'replied', 'skipped', 'rate_limited', 'blacklisted', 'error'];
+const STATUS_OPTIONS = [
+  'all',
+  'received',
+  'replied',
+  'skipped',
+  'rate_limited',
+  'blacklisted',
+  'skipped-outside-schedule',
+  'skipped-group',
+  'skipped-channel',
+  'skipped-broadcast',
+  'skipped-status',
+  'skipped-self',
+  'skipped-unknown-chat-type',
+  'error'
+];
 
 const STATUS_STYLE = {
   received: 'bg-white/10 text-petal-dim',
@@ -9,6 +24,13 @@ const STATUS_STYLE = {
   skipped: 'bg-white/10 text-petal-dim',
   rate_limited: 'bg-yellow-500/15 text-yellow-300',
   blacklisted: 'bg-red-500/15 text-red-300',
+  'skipped-outside-schedule': 'bg-sheuli/15 text-sheuli-light',
+  'skipped-group': 'bg-white/10 text-petal-dim',
+  'skipped-channel': 'bg-white/10 text-petal-dim',
+  'skipped-broadcast': 'bg-white/10 text-petal-dim',
+  'skipped-status': 'bg-white/10 text-petal-dim',
+  'skipped-self': 'bg-white/10 text-petal-dim',
+  'skipped-unknown-chat-type': 'bg-white/10 text-petal-dim',
   error: 'bg-red-500/15 text-red-300'
 };
 

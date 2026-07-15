@@ -3,17 +3,10 @@ import { getAllSettings, setSetting } from '../db.js';
 
 const router = Router();
 
-const EDITABLE_KEYS = [
-  'autoReplyEnabled',
-  'scheduleEnabled',
-  'scheduleStart',
-  'scheduleEnd',
-  'timezone',
-  'systemPrompt',
-  'rateLimitPerHour',
-  'whitelistMode',
-  'model'
-];
+// Schedule fields (mode, scheduleStart/End, scheduleDays) are managed exclusively
+// through GET/PUT /api/settings/schedule — timezone is never user-editable, it
+// always comes from the server's TIMEZONE env var.
+const EDITABLE_KEYS = ['autoReplyEnabled', 'systemPrompt', 'whitelistMode', 'model'];
 
 router.get('/', (req, res) => {
   res.json(getAllSettings());

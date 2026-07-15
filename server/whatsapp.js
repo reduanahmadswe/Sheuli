@@ -6,6 +6,8 @@ import pkg from 'whatsapp-web.js';
 import config from './config.js';
 import logger from './logger.js';
 import { generateReply } from './ai.js';
+import { classifyChatId } from './chatFilter.js';
+import { isSheuliActive } from './schedule.js';
 import {
   upsertContact,
   touchContact,
@@ -13,7 +15,12 @@ import {
   logMessage,
   getRecentConversation,
   getAllSettings,
-  setSetting
+  setSetting,
+  hasProcessedMessage,
+  markMessageProcessed,
+  isIntroDue,
+  setIntroSent,
+  countRepliesInLastHour
 } from './db.js';
 
 const { Client, LocalAuth } = pkg;
@@ -22,6 +29,12 @@ let client = null;
 let ioRef = null;
 let connectionStatus = 'initializing'; // initializing | qr | connected | disconnected | auth_failure
 let lastQr = null;
+
+// In-memory de-dup cache (mirrors the processed_messages table for fast-path checks)
+// and a per-contact busy lock so a second incoming message can't trigger a second
+// reply while Sheuli is still generating/sending one for that contact.
+const processedMessageIds = new Set();
+const busyContacts = new Set();
 
 function emitStatus(status) {
   connectionStatus = status;
@@ -33,40 +46,36 @@ function randomDelay(minMs = 3000, maxMs = 8000) {
   return new Promise((resolve) => setTimeout(resolve, minMs + Math.random() * (maxMs - minMs)));
 }
 
-function getCurrentTimeInZone(timezone) {
-  const fmt = new Intl.DateTimeFormat('en-GB', {
-    timeZone: timezone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
+// Logs (and broadcasts to the dashboard) a message that was skipped before any
+// contact record or AI call was ever created — used for chat types that are
+// never eligible for a reply (groups, channels, broadcasts, self-chat, etc.).
+function logQuickSkip(chatId, status) {
+  logMessage({ contactId: chatId, contactName: chatId, direction: 'out', body: '', status });
+  ioRef?.emit('message:new', {
+    contactId: chatId,
+    contactName: chatId,
+    direction: 'out',
+    body: '',
+    status,
+    createdAt: new Date().toISOString()
   });
-  return fmt.format(new Date());
-}
-
-function isWithinWindow(current, start, end) {
-  if (start === end) return true;
-  const toMinutes = (t) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-  const c = toMinutes(current);
-  const s = toMinutes(start);
-  const e = toMinutes(end);
-  if (s < e) return c >= s && c < e;
-  return c >= s || c < e;
-}
-
-function isAutoReplyActive(settings) {
-  if (settings.autoReplyEnabled) return true;
-  if (settings.scheduleEnabled) {
-    const current = getCurrentTimeInZone(settings.timezone || config.timezone);
-    return isWithinWindow(current, settings.scheduleStart, settings.scheduleEnd);
-  }
-  return false;
 }
 
 async function handleSelfCommand(message, body) {
   const command = body.trim().toLowerCase();
+  if (command !== '/on' && command !== '/off') return false;
+
+  const settings = getAllSettings();
+
+  // FEATURE 2: while schedule mode is in control, /on and /off don't toggle
+  // anything — the schedule is the single source of truth for when Sheuli replies.
+  if (settings.mode === 'schedule') {
+    await message.reply(
+      `🌙 Sheuli is in schedule mode (${settings.scheduleStart}–${settings.scheduleEnd}). ` +
+        'Switch to manual mode from the dashboard to control her manually.'
+    );
+    return true;
+  }
 
   if (command === '/on') {
     setSetting('autoReplyEnabled', true);
@@ -74,34 +83,64 @@ async function handleSelfCommand(message, body) {
     await message.reply('🌸 Sheuli is now ON');
     return true;
   }
-  if (command === '/off') {
-    setSetting('autoReplyEnabled', false);
-    ioRef?.emit('settings:updated', getAllSettings());
-    await message.reply('🌙 Sheuli is now OFF');
-    return true;
-  }
-  return false;
+
+  setSetting('autoReplyEnabled', false);
+  ioRef?.emit('settings:updated', getAllSettings());
+  await message.reply('🌙 Sheuli is now OFF');
+  return true;
 }
 
 async function handleIncomingMessage(message) {
+  // De-duplicate: whatsapp-web.js can occasionally re-emit the same event
+  // (e.g. around a reconnect). Record the ID before doing any other work so a
+  // duplicate event is dropped immediately instead of triggering a second reply.
+  const messageId = message.id?._serialized;
+  if (messageId) {
+    if (processedMessageIds.has(messageId) || hasProcessedMessage(messageId)) {
+      logger.debug({ messageId }, 'Duplicate message event ignored');
+      return;
+    }
+    processedMessageIds.add(messageId);
+    markMessageProcessed(messageId);
+  }
+
   const chatId = message.from;
   const selfId = client.info?.wid?._serialized;
   const isSelfChat = selfId && chatId === selfId;
 
-  // Group chats: never reply
-  if (chatId.endsWith('@g.us')) {
+  // ── FEATURE 1: reply ONLY to personal 1-to-1 contacts ──────────────────
+  // Whitelist-by-type: only individual 1-to-1 chats ("@c.us" and "@lid") are eligible at all.
+  // Everything else (groups/communities "@g.us", channels/newsletters
+  // "@newsletter", broadcast lists and status updates "@broadcast", or any
+  // future/unrecognized chat-ID shape) is skipped by default — this is
+  // intentionally an allowlist, not a blocklist, so nothing new can slip
+  // through unnoticed. This check runs before any contact lookup or AI call.
+  const skipReason = classifyChatId(chatId);
+  if (skipReason) {
+    logQuickSkip(chatId, skipReason);
     return;
   }
 
-  // Status/broadcast: never reply
-  if (chatId === 'status@broadcast' || message.isStatus) {
+  // Second safety layer: verify against the real Chat object too, in case an
+  // ID that *looks* like an individual chat is ever actually a group/community.
+  let chat;
+  try {
+    chat = await message.getChat();
+  } catch (err) {
+    logger.warn({ err: err?.message || err }, 'Could not fetch chat object');
+  }
+  if (chat?.isGroup) {
+    logQuickSkip(chatId, 'skipped-group');
     return;
   }
 
-  // Messages sent by the owner: only handle /on /off in the self chat
+  // Messages sent by the owner: only handle /on /off in the self chat —
+  // anything else the owner sends (in any chat) is deliberately left alone.
   if (message.fromMe) {
     if (isSelfChat) {
       await handleSelfCommand(message, message.body || '');
+    } else {
+      logQuickSkip(chatId, 'skipped-self');
     }
     return;
   }
@@ -131,6 +170,10 @@ async function handleIncomingMessage(message) {
   }
   candidateJids.push(chatId);
   candidateJids = [...new Set(candidateJids.filter(Boolean))];
+
+  // Snapshot the contact BEFORE touching last_message_at, so the 24h-inactivity
+  // check for re-introduction compares against the *previous* message, not this one.
+  const priorContact = getContact(chatId);
 
   upsertContact({ id: chatId, name: contactName, number: contactNumber, isGroup: false });
   touchContact(chatId);
@@ -182,20 +225,41 @@ async function handleIncomingMessage(message) {
     return;
   }
 
-  if (!isAutoReplyActive(settings)) {
+  // ── FEATURE 2: schedule enforcement ─────────────────────────────────────
+  // Re-evaluated fresh on every incoming message (pure function, no cached
+  // flag) so a cutoff always takes effect immediately, even after a restart.
+  if (!isSheuliActive(settings)) {
+    recordSkip(settings.mode === 'schedule' ? 'skipped-outside-schedule' : 'skipped');
+    return;
+  }
+
+  const replyCount = countRepliesInLastHour(chatId);
+  const rateLimit = settings.rateLimitPerHour ?? config.defaults.rateLimitPerHour;
+  if (replyCount >= rateLimit) {
+    recordSkip('rate_limited');
+    return;
+  }
+
+  // Per-contact processing lock: if Sheuli is still generating/sending a reply
+  // for this contact, drop this message rather than risk a second reply.
+  if (busyContacts.has(chatId)) {
+    logger.debug({ chatId }, 'Contact is already being processed — dropping message to avoid a duplicate reply');
     recordSkip('skipped');
     return;
   }
+  busyContacts.add(chatId);
+
+  const introDue = isIntroDue(priorContact);
 
   try {
     const { reply, promptTokens, completionTokens } = await generateReply({
       contactId: chatId,
       incomingBody,
-      history: conversationHistory
+      history: conversationHistory,
+      isFirstReply: introDue
     });
 
     try {
-      const chat = await message.getChat();
       if (chat && chat.sendStateTyping) {
         await chat.sendStateTyping();
       }
@@ -214,7 +278,7 @@ async function handleIncomingMessage(message) {
     } catch (replyErr) {
       lastErr = replyErr;
       logger.warn({ err: replyErr?.message || replyErr, chatId }, 'message.reply() failed, trying candidate JIDs...');
-      
+
       for (const jid of candidateJids) {
         try {
           await client.sendMessage(jid, reply, { linkPreview: false });
@@ -229,6 +293,10 @@ async function handleIncomingMessage(message) {
 
     if (!sentSuccess) {
       throw lastErr || new Error('All reply candidates failed');
+    }
+
+    if (introDue) {
+      setIntroSent(chatId, true);
     }
 
     logMessage({
@@ -252,6 +320,8 @@ async function handleIncomingMessage(message) {
   } catch (err) {
     logger.error({ err: err?.message || err, contactId: chatId }, 'Failed to generate/send reply');
     recordSkip('error');
+  } finally {
+    busyContacts.delete(chatId);
   }
 }
 
@@ -516,6 +586,10 @@ export async function initWhatsApp(io) {
     await resetClient(reason);
   });
 
+  // Defensive: guarantee a single 'message' listener even if something re-attaches
+  // one on this same client instance (a fresh Client is normally created on every
+  // reconnect, but this keeps that invariant true if that ever changes).
+  client.removeAllListeners('message');
   client.on('message', async (message) => {
     try {
       await handleIncomingMessage(message);

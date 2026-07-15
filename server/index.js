@@ -11,12 +11,16 @@ import config from './config.js';
 import logger from './logger.js';
 import { requireAuth, COOKIE_NAME } from './middleware/auth.js';
 import { initWhatsApp, getConnectionStatus, getLastQr, destroyClient } from './whatsapp.js';
+import { getAllSettings } from './db.js';
+import { getScheduleStatus } from './schedule.js';
 
 import authRoutes from './routes/auth.js';
 import settingsRoutes from './routes/settings.js';
+import scheduleRoutes from './routes/schedule.js';
 import contactsRoutes from './routes/contacts.js';
 import logsRoutes from './routes/logs.js';
 import statusRoutes from './routes/status.js';
+import chatsRoutes from './routes/chats.js';
 
 fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(config.logsDir, { recursive: true });
@@ -35,10 +39,12 @@ app.use(express.json());
 app.use(cookieParser(config.sessionSecret));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/settings/schedule', requireAuth, scheduleRoutes);
 app.use('/api/settings', requireAuth, settingsRoutes);
 app.use('/api/contacts', requireAuth, contactsRoutes);
 app.use('/api/logs', requireAuth, logsRoutes);
 app.use('/api/status', requireAuth, statusRoutes);
+app.use('/api/chats', requireAuth, chatsRoutes);
 
 const dashboardDist = path.join(config.rootDir, 'dashboard', 'dist');
 if (fs.existsSync(dashboardDist)) {
@@ -74,6 +80,23 @@ io.on('connection', (socket) => {
   socket.emit('whatsapp:status', { status: getConnectionStatus() });
   const qr = getLastQr();
   if (qr) socket.emit('whatsapp:qr', { qr });
+  socket.emit('schedule:status', getScheduleStatus(getAllSettings()));
+});
+
+// Purely a display convenience for the dashboard (countdown / "next wake" text) —
+// actual enforcement always re-evaluates isSheuliActive() live on each incoming
+// message in whatsapp.js, so this timer can never cause a missed cutoff.
+setInterval(() => {
+  io.emit('schedule:status', getScheduleStatus(getAllSettings()));
+}, 30000).unref();
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    logger.error(`Port ${config.port} is already in use by another instance of Sheuli (or another process). Please close the running instance before starting a new one.`);
+    process.exit(1);
+  } else {
+    logger.error({ err: err.message, code: err.code }, 'Server listen error');
+  }
 });
 
 server.listen(config.port, () => {

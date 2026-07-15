@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { listContacts, setContactFlag, getContact } from '../db.js';
+import { listContacts, setContactFlag, getContact, clearContactMemory } from '../db.js';
 
 const router = Router();
 
@@ -25,6 +25,17 @@ router.patch('/:id', (req, res) => {
   }
 
   return res.json(contact || getContact(id));
+});
+
+router.post('/:id/clear-memory', (req, res) => {
+  const { id } = req.params;
+
+  if (!getContact(id)) {
+    return res.status(404).json({ error: 'Contact not found' });
+  }
+
+  const contact = clearContactMemory(id);
+  return res.json(contact);
 });
 
 export default router;
