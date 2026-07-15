@@ -1,0 +1,13 @@
+node_modules/
+dashboard/node_modules/
+dashboard/dist/
+.env
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+.wwebjs_auth/
+.wwebjs_cache/
+logs/*.log
+*.log
+.DS_Store

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sheuli-backend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "sheuli-dashboard",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dashboard:dev"],
+      "port": 5173
+    }
+  ]
+}
