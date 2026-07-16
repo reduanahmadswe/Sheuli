@@ -25,6 +25,7 @@ import logsRoutes from './routes/logs.js';
 import statusRoutes from './routes/status.js';
 import chatsRoutes from './routes/chats.js';
 import summariesRoutes from './routes/summaries.js';
+import diagnosticsRoutes from './routes/diagnostics.js';
 
 fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(config.logsDir, { recursive: true });
@@ -76,6 +77,7 @@ app.use('/api/logs', requireAuth, logsRoutes);
 app.use('/api/status', requireAuth, statusRoutes);
 app.use('/api/chats', requireAuth, chatsRoutes);
 app.use('/api/summaries', requireAuth, summariesRoutes);
+app.use('/api/diagnostics', requireAuth, diagnosticsRoutes);
 
 const dashboardDist = path.join(config.rootDir, 'dashboard', 'dist');
 if (fs.existsSync(dashboardDist)) {

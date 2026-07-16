@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import Database from 'better-sqlite3';
 import config from './config.js';
+import logger from './logger.js';
 import { getZonedDateKey, getZonedDayBoundsUtc, toSqliteUtc } from './schedule.js';
 
 fs.mkdirSync(config.dataDir, { recursive: true });
@@ -119,6 +120,40 @@ const LEGACY_RATE_LIMIT_PER_HOUR = '3';
       'rateLimitPerHour',
       String(config.defaults.rateLimitPerHour)
     );
+  }
+}
+
+// FIX 4: on a brand-new database (e.g. a fresh Railway Volume with nothing on
+// it yet), the settings table starts completely empty. getSetting()'s
+// fallback already makes the app behave correctly either way, but that makes
+// it genuinely hard to tell, from the outside, "is Sheuli using the default
+// because nothing's been set, or did something just reset my config?". So on
+// first run, explicitly persist (not just fall back to) the settings that
+// most determine whether Sheuli does anything at all, and log exactly what
+// got seeded — nothing is seeded silently.
+{
+  const FIRST_RUN_DEFAULTS = {
+    autoReplyEnabled: config.defaults.autoReplyEnabled,
+    mode: config.defaults.mode,
+    rateLimitPerHour: config.defaults.rateLimitPerHour,
+    costLimitDaily: config.defaults.costLimitDaily,
+    dailySummaryTime: config.defaults.dailySummaryTime
+  };
+
+  const seeded = {};
+  for (const [key, value] of Object.entries(FIRST_RUN_DEFAULTS)) {
+    const existing = db.prepare('SELECT 1 FROM settings WHERE key = ?').get(key);
+    if (!existing) {
+      db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(
+        key,
+        typeof value === 'string' ? value : JSON.stringify(value)
+      );
+      seeded[key] = value;
+    }
+  }
+
+  if (Object.keys(seeded).length > 0) {
+    logger.info({ seeded }, '🌱 Fresh database detected — seeded first-run default settings');
   }
 }
 
@@ -496,6 +531,25 @@ export function getMessagesForSummary(sinceIso, untilIso) {
 // and the file handle is released cleanly before the process exits.
 export function closeDb() {
   db.close();
+}
+
+// ── FIX 5: diagnostics ──────────────────────────────────────────────────
+
+export function getMessageCount() {
+  return db.prepare('SELECT COUNT(*) AS c FROM messages').get().c;
+}
+
+export function getLastMessageTimestamps() {
+  const lastIncoming = db
+    .prepare("SELECT created_at FROM messages WHERE direction = 'in' AND status = 'received' ORDER BY id DESC LIMIT 1")
+    .get();
+  const lastReply = db
+    .prepare("SELECT created_at FROM messages WHERE direction = 'out' AND status = 'replied' ORDER BY id DESC LIMIT 1")
+    .get();
+  return {
+    lastIncomingAt: lastIncoming?.created_at || null,
+    lastReplyAt: lastReply?.created_at || null
+  };
 }
 
 export default db;

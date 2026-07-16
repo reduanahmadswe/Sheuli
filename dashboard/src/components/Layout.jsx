@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import Logo from './Logo.jsx';
 import useAuth from '../hooks/useAuth.js';
+import getSocket from '../lib/socket.js';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Overview', icon: '🌸', end: true },
@@ -10,6 +11,36 @@ const NAV_ITEMS = [
   { to: '/settings', label: 'Settings', icon: '⚙️' },
   { to: '/logs', label: 'Logs', icon: '📜' }
 ];
+
+// FIX 5: small live indicator for the dashboard's own WebSocket connection —
+// green when the socket.io connection to the server is up, red when it's
+// down/reconnecting, independent of whether WhatsApp itself is connected.
+function SocketStatusDot() {
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    const socket = getSocket();
+    setConnected(socket.connected);
+
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, []);
+
+  return (
+    <span
+      className={`h-2 w-2 shrink-0 rounded-full ${connected ? 'bg-emerald-400' : 'animate-pulse bg-red-400'}`}
+      title={connected ? 'Live connection active' : 'Live connection lost — reconnecting…'}
+    />
+  );
+}
 
 export default function Layout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -34,8 +65,11 @@ export default function Layout({ children }) {
       <aside className="hidden w-64 shrink-0 flex-col border-r border-white/5 bg-night-400/60 px-4 py-6 backdrop-blur-xl lg:flex">
         <div className="mb-8 flex items-center gap-3 px-2">
           <Logo size={38} />
-          <div>
-            <p className="text-base font-bold tracking-tight text-petal">Sheuli</p>
+          <div className="flex-1">
+            <div className="flex items-center gap-1.5">
+              <p className="text-base font-bold tracking-tight text-petal">Sheuli</p>
+              <SocketStatusDot />
+            </div>
             <p className="text-[11px] text-petal-dim">She blooms while you sleep.</p>
           </div>
         </div>
@@ -61,6 +95,7 @@ export default function Layout({ children }) {
           <div className="flex items-center gap-2">
             <Logo size={30} />
             <span className="font-bold text-petal">Sheuli</span>
+            <SocketStatusDot />
           </div>
           <button
             onClick={() => setMobileOpen((v) => !v)}

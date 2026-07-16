@@ -116,7 +116,26 @@ async function handleSelfCommand(message, body) {
   return true;
 }
 
+// FIX 5: unconditional visibility into whether messages are arriving at all —
+// logged before ANY filtering/de-dup/skip logic, so "did WhatsApp even hand
+// us this message" is never in question when debugging production logs.
+function chatTypeLabel(chatId) {
+  if (!chatId || typeof chatId !== 'string') return 'unknown';
+  if (chatId === 'status@broadcast') return 'status';
+  if (chatId.includes('@broadcast')) return 'broadcast';
+  if (chatId.endsWith('@newsletter')) return 'channel';
+  if (chatId.endsWith('@g.us')) return 'group';
+  if (chatId.endsWith('@c.us') || chatId.endsWith('@lid')) return 'individual';
+  return 'unknown';
+}
+
 async function handleIncomingMessage(message) {
+  const rawChatId = message.from;
+  const rawNumber = (rawChatId || '').replace('@c.us', '').replace('@lid', '').replace('@g.us', '');
+  logger.info(
+    `Incoming: ${chatTypeLabel(rawChatId)} from ${rawNumber || 'unknown'} — ${(message.body || '').slice(0, 30)}`
+  );
+
   // De-duplicate: whatsapp-web.js can occasionally re-emit the same event
   // (e.g. around a reconnect). Record the ID before doing any other work so a
   // duplicate event is dropped immediately instead of triggering a second reply.
@@ -449,6 +468,7 @@ async function getBrowserExecutablePath() {
 }
 
 let isResetting = false;
+let isInitializing = false;
 let startupWatchdog = null;
 
 function cleanAllLockfiles(dirPath) {
@@ -485,6 +505,15 @@ export async function destroyClient() {
   }
   if (client) {
     logger.info('Shutting down WhatsApp client cleanly...');
+    // Strip listeners FIRST: client.destroy() tears down the underlying
+    // Puppeteer browser, which can itself emit a 'disconnected' event on the
+    // way out. With listeners still attached, that would fire our own
+    // 'disconnected' handler mid-teardown and kick off ANOTHER reconnect
+    // (resetClient -> initWhatsApp) racing against this shutdown — the root
+    // cause of the "authenticated" log firing multiple times in production,
+    // and of module-level `client` getting reassigned out from under an
+    // in-flight incoming-message handler.
+    client.removeAllListeners();
     try {
       await client.destroy();
     } catch {
@@ -505,6 +534,7 @@ async function resetClient(reason) {
   try {
     if (client) {
       logger.info('Destroying existing WhatsApp client and browser instance...');
+      client.removeAllListeners();
       try {
         await client.destroy();
       } catch {
@@ -538,7 +568,27 @@ async function resetClient(reason) {
   }
 }
 
+// Guards against ever having two Client instances alive at once. Without
+// this, a cascading event during teardown (see the removeAllListeners()
+// comments above) could race a second initWhatsApp() call against one still
+// in flight — two Puppeteer browsers, two full listener sets, and the
+// module-level `client` variable getting reassigned mid-flight while an
+// incoming-message handler is still using it (which is what caused messages
+// to silently vanish instead of being logged/replied to).
 export async function initWhatsApp(io) {
+  if (isInitializing) {
+    logger.warn('initWhatsApp() called while an initialization is already in progress — ignoring duplicate call');
+    return client;
+  }
+  isInitializing = true;
+  try {
+    return await doInitWhatsApp(io);
+  } finally {
+    isInitializing = false;
+  }
+}
+
+async function doInitWhatsApp(io) {
   ioRef = io;
   emitStatus('initializing');
 
@@ -548,6 +598,7 @@ export async function initWhatsApp(io) {
   }
 
   if (client) {
+    client.removeAllListeners();
     try {
       await client.destroy();
     } catch {
@@ -577,6 +628,13 @@ export async function initWhatsApp(io) {
     authStrategy: new LocalAuth({ dataPath: config.sessionAuthDir }),
     puppeteer: puppeteerOptions
   });
+
+  // Strip all listeners immediately after instantiation right before registering
+  // our handlers so that no duplicate listener registrations can exist on this client.
+  client.removeAllListeners();
+
+  let hasLoggedAuthenticated = false;
+  let hasLoggedReady = false;
 
   startupWatchdog = setTimeout(() => {
     if (connectionStatus === 'initializing') {
@@ -617,7 +675,10 @@ export async function initWhatsApp(io) {
       startupWatchdog = null;
     }
     emitStatus('connected');
-    logger.info('Sheuli is connected to WhatsApp');
+    if (!hasLoggedReady) {
+      hasLoggedReady = true;
+      logger.info('Sheuli is connected to WhatsApp');
+    }
 
     // FEATURE 1: recovery alert — only fires if we previously alerted about a
     // disconnect/auth failure, never on the very first connect.
@@ -630,7 +691,10 @@ export async function initWhatsApp(io) {
   });
 
   client.on('authenticated', () => {
-    logger.info('WhatsApp authentication successful');
+    if (!hasLoggedAuthenticated) {
+      hasLoggedAuthenticated = true;
+      logger.info('WhatsApp authentication successful');
+    }
   });
 
   client.on('auth_failure', async (msg) => {

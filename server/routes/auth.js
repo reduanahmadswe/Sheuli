@@ -45,12 +45,12 @@ router.post('/login', (req, res) => {
   }
 
   failedAttempts.delete(req.ip);
-  issueSessionCookie(res);
+  issueSessionCookie(res, req);
   return res.json({ ok: true });
 });
 
 router.post('/logout', (req, res) => {
-  clearSessionCookie(res);
+  clearSessionCookie(res, req);
   return res.json({ ok: true });
 });
 

@@ -41,6 +41,30 @@ function formatTime12h(hhmm) {
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
+function formatDiagnosticTime(iso) {
+  if (!iso) return 'never';
+  try {
+    return new Date(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`).toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function DiagRow({ label, value, tone }) {
+  const toneClass = tone === 'good' ? 'text-emerald-300' : tone === 'bad' ? 'text-red-300' : 'text-petal';
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-white/5 py-2 text-sm last:border-none">
+      <span className="text-petal-dim">{label}</span>
+      <span className={`text-right font-medium ${toneClass}`}>{value}</span>
+    </div>
+  );
+}
+
 function describeDays(days) {
   if (!Array.isArray(days) || days.length === 0 || days.length === 7) return 'every day';
   const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -67,9 +91,26 @@ export default function Settings() {
   const [rateLimitDraft, setRateLimitDraft] = useState('10');
   const [rateLimitError, setRateLimitError] = useState('');
 
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(true);
+
+  const loadDiagnostics = async () => {
+    try {
+      const { data } = await api.get('/diagnostics');
+      setDiagnostics(data);
+    } catch {
+      // Leave the last-known values displayed rather than clearing them.
+    } finally {
+      setDiagnosticsLoading(false);
+    }
+  };
+
   useEffect(() => {
     api.get('/settings').then(({ data }) => setSettings(data));
     api.get('/settings/schedule').then(({ data }) => setSchedule(data));
+    loadDiagnostics();
+    const interval = setInterval(loadDiagnostics, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   // Keeps the number input in sync with the saved value, but only while rate
@@ -179,6 +220,50 @@ export default function Settings() {
       <div className="rounded-2xl border border-white/10 bg-night-400/30 px-4 py-3 text-xs text-petal-dim">
         🔒 Sheuli only replies to personal chats. Groups, communities, channels and broadcasts are always ignored.
       </div>
+
+      <Section
+        title="🩺 Diagnostics"
+        description="Live values, refreshed every 10s — check this first if something seems off."
+      >
+        {diagnosticsLoading && !diagnostics ? (
+          <p className="text-sm text-petal-dim">Loading…</p>
+        ) : diagnostics ? (
+          <div className="flex flex-col gap-1">
+            <DiagRow
+              label="WhatsApp"
+              value={diagnostics.whatsapp.state}
+              tone={diagnostics.whatsapp.state === 'connected' ? 'good' : 'bad'}
+            />
+            <DiagRow label="My number" value={diagnostics.whatsapp.number || '—'} />
+            <DiagRow
+              label="Auto-reply"
+              value={diagnostics.autoReply.reason}
+              tone={diagnostics.autoReply.active ? 'good' : 'bad'}
+            />
+            <DiagRow label="Messages in DB" value={diagnostics.database.messageCount} />
+            <DiagRow label="DB path" value={diagnostics.database.path} />
+            <DiagRow
+              label="Today's cost"
+              value={`$${diagnostics.cost.todayEstimated.toFixed(4)} / $${diagnostics.cost.dailyLimit.toFixed(2)}`}
+            />
+            <DiagRow
+              label="OPENAI_API_KEY"
+              value={diagnostics.env.openaiApiKeyPresent ? 'present' : 'MISSING'}
+              tone={diagnostics.env.openaiApiKeyPresent ? 'good' : 'bad'}
+            />
+            <DiagRow
+              label="Telegram alerts"
+              value={diagnostics.env.telegramConfigured ? 'configured' : 'not configured'}
+              tone={diagnostics.env.telegramConfigured ? 'good' : undefined}
+            />
+            <DiagRow label="Last incoming message" value={formatDiagnosticTime(diagnostics.lastIncomingAt)} />
+            <DiagRow label="Last reply sent" value={formatDiagnosticTime(diagnostics.lastReplyAt)} />
+            <DiagRow label="Server uptime" value={`${Math.floor(diagnostics.uptimeSeconds / 60)} min`} />
+          </div>
+        ) : (
+          <p className="text-sm text-red-400">Could not load diagnostics.</p>
+        )}
+      </Section>
 
       <Section title="Sheuli's personality" description="This is the system prompt sent to the AI on every reply.">
         <textarea

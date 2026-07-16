@@ -149,6 +149,22 @@ export default function Overview() {
         </div>
       )}
 
+      {/* FIX 4: impossible-to-miss reminder after a fresh deploy — a new
+          database seeds autoReplyEnabled=false by default, so Sheuli won't
+          reply to anyone until this is flipped on. */}
+      {!isScheduleMode && !autoReplyEnabled && (
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-sheuli/40 bg-sheuli/10 px-4 py-3 text-sm text-sheuli-light">
+          <span>🌙 Sheuli is OFF — turn her on to start replying.</span>
+          <button
+            onClick={toggleAutoReply}
+            disabled={toggling}
+            className="shrink-0 rounded-lg bg-sheuli px-3 py-1.5 text-xs font-semibold text-night-900 transition hover:bg-sheuli-light disabled:opacity-50"
+          >
+            {toggling ? 'Turning on…' : 'Turn on'}
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Connection status */}
         <div className="rounded-2xl border border-white/10 bg-night-400/50 p-6 backdrop-blur-xl">
