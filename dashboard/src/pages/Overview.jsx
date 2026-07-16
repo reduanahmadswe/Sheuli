@@ -40,7 +40,9 @@ export default function Overview() {
     messagesReceived: 0,
     repliesSent: 0,
     activeConversations: 0,
-    estimatedCostToday: 0
+    estimatedCostToday: 0,
+    costLimitDaily: 0.5,
+    costLimitReached: false
   });
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -140,6 +142,13 @@ export default function Overview() {
         <p className="text-sm text-petal-dim">A quick look at how Sheuli is doing right now.</p>
       </div>
 
+      {stats.costLimitReached && (
+        <div className="rounded-2xl border border-yellow-400/30 bg-yellow-400/10 px-4 py-3 text-sm text-yellow-200">
+          ⚠️ Today's API cost limit (${stats.costLimitDaily.toFixed(2)}) has been reached — auto-replies are paused until
+          local midnight. Raise the limit in Settings if you need Sheuli back sooner.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Connection status */}
         <div className="rounded-2xl border border-white/10 bg-night-400/50 p-6 backdrop-blur-xl">
@@ -208,7 +217,11 @@ export default function Overview() {
         <StatCard label="Messages today" value={stats.messagesReceived} />
         <StatCard label="Replies sent" value={stats.repliesSent} />
         <StatCard label="Active chats" value={stats.activeConversations} />
-        <StatCard label="Est. API cost" value={`$${stats.estimatedCostToday.toFixed(4)}`} hint="gpt-4o-mini" />
+        <StatCard
+          label="Est. API cost"
+          value={`$${stats.estimatedCostToday.toFixed(4)}`}
+          hint={`of $${stats.costLimitDaily.toFixed(2)} daily limit`}
+        />
       </div>
     </div>
   );

@@ -61,10 +61,25 @@ export default function Settings() {
   const [scheduleSavedAt, setScheduleSavedAt] = useState(null);
   const [scheduleError, setScheduleError] = useState('');
 
+  const [testingAlert, setTestingAlert] = useState(false);
+  const [alertResult, setAlertResult] = useState(null);
+
+  const [rateLimitDraft, setRateLimitDraft] = useState('10');
+  const [rateLimitError, setRateLimitError] = useState('');
+
   useEffect(() => {
     api.get('/settings').then(({ data }) => setSettings(data));
     api.get('/settings/schedule').then(({ data }) => setSchedule(data));
   }, []);
+
+  // Keeps the number input in sync with the saved value, but only while rate
+  // limiting is on — while off (0), the input keeps whatever the owner last
+  // typed so toggling back on restores it instead of jumping to 0.
+  useEffect(() => {
+    if (settings?.rateLimitPerHour > 0) {
+      setRateLimitDraft(String(settings.rateLimitPerHour));
+    }
+  }, [settings?.rateLimitPerHour]);
 
   const patch = (updates) => setSettings((prev) => ({ ...prev, ...updates }));
 
@@ -106,6 +121,38 @@ export default function Settings() {
       setScheduleError(err.response?.data?.error || 'Could not save schedule.');
     } finally {
       setScheduleSaving(false);
+    }
+  };
+
+  const toggleRateLimit = () => {
+    if (settings.rateLimitPerHour > 0) {
+      save({ rateLimitPerHour: 0 });
+      return;
+    }
+    const restored = Number(rateLimitDraft);
+    save({ rateLimitPerHour: Number.isInteger(restored) && restored >= 1 && restored <= 100 ? restored : 10 });
+  };
+
+  const saveRateLimit = () => {
+    const value = Number(rateLimitDraft);
+    if (!Number.isInteger(value) || value < 1 || value > 100) {
+      setRateLimitError('Enter a whole number between 1 and 100.');
+      return;
+    }
+    setRateLimitError('');
+    save({ rateLimitPerHour: value });
+  };
+
+  const sendTestAlert = async () => {
+    setTestingAlert(true);
+    setAlertResult(null);
+    try {
+      await api.post('/settings/test-alert');
+      setAlertResult({ ok: true, message: 'Test alert sent — check your Telegram.' });
+    } catch (err) {
+      setAlertResult({ ok: false, message: err.response?.data?.error || 'Failed to send test alert.' });
+    } finally {
+      setTestingAlert(false);
     }
   };
 
@@ -261,6 +308,47 @@ export default function Settings() {
         />
       </Section>
 
+      <Section title="Rate limit" description="Caps how many replies Sheuli sends to the same contact per hour.">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-petal">Enable rate limit</p>
+            <Toggle checked={settings.rateLimitPerHour > 0} onChange={toggleRateLimit} />
+          </div>
+
+          {settings.rateLimitPerHour > 0 ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={rateLimitDraft}
+                  onChange={(e) => {
+                    setRateLimitDraft(e.target.value);
+                    setRateLimitError('');
+                  }}
+                  className="w-24 rounded-lg border border-white/10 bg-night-500/80 px-3 py-2 text-petal outline-none"
+                />
+                <span className="text-xs text-petal-dim">max replies per contact / hour</span>
+                <button
+                  onClick={saveRateLimit}
+                  disabled={saving}
+                  className="rounded-xl bg-sheuli px-4 py-2 text-sm font-semibold text-night-900 shadow-glow-sm transition hover:bg-sheuli-light disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : 'Save limit'}
+                </button>
+              </div>
+              {rateLimitError && <p className="text-sm text-red-400">{rateLimitError}</p>}
+            </div>
+          ) : (
+            <p className="text-xs text-yellow-300/90">
+              ⚠️ Unlimited mode: Sheuli will reply to every message. This may increase API cost — the daily cost
+              guard still protects you.
+            </p>
+          )}
+        </div>
+      </Section>
+
       <Section title="Model" description="Which OpenAI model Sheuli uses to write replies.">
         <select
           value={settings.model}
@@ -273,6 +361,97 @@ export default function Settings() {
             </option>
           ))}
         </select>
+      </Section>
+
+      <Section
+        title="Daily API cost guard"
+        description="Once today's estimated OpenAI cost hits this limit, Sheuli pauses auto-replies until midnight."
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-petal-dim">$</span>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={settings.costLimitDaily}
+            onChange={(e) => patch({ costLimitDaily: e.target.value })}
+            className="w-32 rounded-lg border border-white/10 bg-night-500/80 px-3 py-2 text-petal outline-none"
+          />
+          <button
+            onClick={() => save({ costLimitDaily: Number(settings.costLimitDaily) })}
+            disabled={saving}
+            className="rounded-xl bg-sheuli px-4 py-2 text-sm font-semibold text-night-900 shadow-glow-sm transition hover:bg-sheuli-light disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save limit'}
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-petal-dim">Default: $0.50/day. Resets at local midnight ({schedule.timezone}).</p>
+      </Section>
+
+      <Section
+        title="🌅 Daily Summary"
+        description="Every morning Sheuli sends a Bangla recap of everything that happened while she was on duty to your own WhatsApp chat."
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-petal">Enable daily summary</p>
+            <Toggle
+              checked={Boolean(settings.dailySummaryEnabled)}
+              onChange={() => save({ dailySummaryEnabled: !settings.dailySummaryEnabled })}
+            />
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-petal-dim">
+            Send at
+            <input
+              type="time"
+              value={settings.dailySummaryTime}
+              onChange={(e) => patch({ dailySummaryTime: e.target.value })}
+              onBlur={() => save({ dailySummaryTime: settings.dailySummaryTime })}
+              className="rounded-lg border border-white/10 bg-night-500/80 px-3 py-1.5 text-petal outline-none"
+            />
+            <span className="text-petal-dim/70">({schedule.timezone})</span>
+          </label>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-petal">Skip if no messages</p>
+              <p className="text-xs text-petal-dim">When on, sends nothing instead of the "no messages" note.</p>
+            </div>
+            <Toggle
+              checked={Boolean(settings.dailySummarySkipIfEmpty)}
+              onChange={() => save({ dailySummarySkipIfEmpty: !settings.dailySummarySkipIfEmpty })}
+            />
+          </div>
+
+          <p className="text-xs text-petal-dim">
+            You can also request one anytime by sending <span className="font-mono text-petal">/summary</span> to your own
+            "Message Yourself" chat. Past summaries are on the Logs page.
+          </p>
+        </div>
+      </Section>
+
+      <Section
+        title="Telegram alerts"
+        description="Get pinged on Telegram when Sheuli disconnects, crashes, or hits her daily cost limit."
+      >
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={sendTestAlert}
+            disabled={testingAlert}
+            className="w-fit rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-petal-dim transition-colors hover:border-sheuli/40 hover:text-sheuli-light disabled:opacity-50"
+          >
+            {testingAlert ? 'Sending…' : 'Send test alert'}
+          </button>
+          {alertResult && (
+            <p className={`text-sm ${alertResult.ok ? 'text-emerald-300' : 'text-red-400'}`}>{alertResult.message}</p>
+          )}
+          <p className="text-xs text-petal-dim">
+            Configure <span className="font-mono text-petal">TELEGRAM_BOT_TOKEN</span> and{' '}
+            <span className="font-mono text-petal">TELEGRAM_CHAT_ID</span> in <span className="font-mono text-petal">.env</span>{' '}
+            on the server, then restart Sheuli — see the README for how to create a bot with @BotFather.
+          </p>
+        </div>
       </Section>
 
       {savedAt && <p className="text-xs text-petal-dim">Saved at {savedAt.toLocaleTimeString()}</p>}

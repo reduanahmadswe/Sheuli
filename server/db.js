@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import Database from 'better-sqlite3';
 import config from './config.js';
+import { getZonedDateKey, getZonedDayBoundsUtc, toSqliteUtc } from './schedule.js';
 
 fs.mkdirSync(config.dataDir, { recursive: true });
 
@@ -43,6 +44,26 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS daily_costs (
+    date TEXT PRIMARY KEY,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    estimated_cost REAL NOT NULL DEFAULT 0,
+    limit_alert_sent INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    content TEXT NOT NULL,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    replied_count INTEGER NOT NULL DEFAULT 0,
+    contact_count INTEGER NOT NULL DEFAULT 0,
+    trigger TEXT NOT NULL DEFAULT 'scheduled',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE INDEX IF NOT EXISTS idx_messages_contact ON messages(contact_id);
   CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
 `);
@@ -78,6 +99,25 @@ const LEGACY_SYSTEM_PROMPT =
     db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(
       'systemPrompt',
       config.defaults.systemPrompt
+    );
+  }
+}
+
+// One-time upgrade: earlier versions hard-coded rateLimitPerHour's default at
+// 3, which got persisted into the settings table on installs that never
+// touched it. The new default is 10 — but config.defaults only applies when
+// no row exists, so an existing "3" row would otherwise silently stick around
+// forever. If the stored value is still exactly that old default (i.e. the
+// owner never deliberately chose 3), bump it to the new default. A
+// deliberately-chosen value (including a deliberately-chosen 3) is never touched.
+const LEGACY_RATE_LIMIT_PER_HOUR = '3';
+
+{
+  const storedRateLimit = db.prepare('SELECT value FROM settings WHERE key = ?').get('rateLimitPerHour');
+  if (storedRateLimit && storedRateLimit.value === LEGACY_RATE_LIMIT_PER_HOUR) {
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(
+      'rateLimitPerHour',
+      String(config.defaults.rateLimitPerHour)
     );
   }
 }
@@ -124,7 +164,12 @@ export function getAllSettings() {
     systemPrompt: getSetting('systemPrompt', d.systemPrompt),
     rateLimitPerHour: getSetting('rateLimitPerHour', d.rateLimitPerHour),
     whitelistMode: getSetting('whitelistMode', d.whitelistMode),
-    model: getSetting('model', d.model)
+    model: getSetting('model', d.model),
+    costLimitDaily: getSetting('costLimitDaily', d.costLimitDaily),
+    dailySummaryEnabled: getSetting('dailySummaryEnabled', d.dailySummaryEnabled),
+    dailySummaryTime: getSetting('dailySummaryTime', d.dailySummaryTime),
+    dailySummarySkipIfEmpty: getSetting('dailySummarySkipIfEmpty', d.dailySummarySkipIfEmpty),
+    lastSummaryAt: getSetting('lastSummaryAt', null)
   };
 }
 
@@ -204,6 +249,11 @@ export function isIntroDue(contact) {
   return Date.now() - lastMessageMs > HOURS_24_MS;
 }
 
+// The chat-list preview must always show real message text, never an empty
+// skip placeholder (rate_limited, blacklisted, etc. all log an empty-body
+// row). `lm` picks the most recent message that actually has body text for
+// the preview/timestamp; `latest` (any row, including skips) still drives the
+// sort order so a contact who just triggered a skip event still bubbles up.
 export function getChats(search = '') {
   const pattern = `%${search}%`;
   return db
@@ -225,10 +275,15 @@ export function getChats(search = '') {
          ), 0) AS unreadCount
        FROM contacts c
        LEFT JOIN messages lm ON lm.id = (
+         SELECT id FROM messages
+         WHERE contact_id = c.id AND body IS NOT NULL AND body != ''
+         ORDER BY id DESC LIMIT 1
+       )
+       LEFT JOIN messages latest ON latest.id = (
          SELECT id FROM messages WHERE contact_id = c.id ORDER BY id DESC LIMIT 1
        )
        WHERE c.is_group = 0 AND (c.name LIKE ? OR c.number LIKE ?)
-       ORDER BY COALESCE(lm.created_at, c.created_at) DESC`
+       ORDER BY COALESCE(latest.created_at, c.created_at) DESC`
     )
     .all(pattern, pattern);
 }
@@ -329,36 +384,118 @@ export function getLogs({ status, contactId, limit = 200, offset = 0 } = {}) {
   return db.prepare(query).all(...params);
 }
 
+// "Today" here always means the local calendar day in config.timezone
+// (Asia/Dhaka by default), not raw UTC — so this lines up with the cost guard
+// (FEATURE 2), which resets at local midnight, not server/UTC midnight.
 export function getTodayStats() {
-  const today = new Date().toISOString().slice(0, 10);
-  const received = db
-    .prepare("SELECT COUNT(*) AS c FROM messages WHERE direction = 'in' AND created_at >= ?")
-    .get(today).c;
-  const replied = db
-    .prepare("SELECT COUNT(*) AS c FROM messages WHERE direction = 'out' AND status = 'replied' AND created_at >= ?")
-    .get(today).c;
-  const activeConversations = db
-    .prepare('SELECT COUNT(DISTINCT contact_id) AS c FROM messages WHERE created_at >= ?')
-    .get(today).c;
-  const tokenRow = db
-    .prepare(
-      `SELECT COALESCE(SUM(prompt_tokens), 0) AS promptTokens, COALESCE(SUM(completion_tokens), 0) AS completionTokens
-       FROM messages WHERE created_at >= ?`
-    )
-    .get(today);
+  const now = new Date();
+  const { startUtc, endUtc } = getZonedDayBoundsUtc(now, config.timezone);
+  const startStr = toSqliteUtc(startUtc);
+  const endStr = toSqliteUtc(endUtc);
 
-  // gpt-4o-mini approximate pricing per 1M tokens
-  const inputCostPerM = 0.15;
-  const outputCostPerM = 0.6;
-  const estimatedCost =
-    (tokenRow.promptTokens / 1_000_000) * inputCostPerM + (tokenRow.completionTokens / 1_000_000) * outputCostPerM;
+  const received = db
+    .prepare("SELECT COUNT(*) AS c FROM messages WHERE direction = 'in' AND created_at >= ? AND created_at < ?")
+    .get(startStr, endStr).c;
+  const replied = db
+    .prepare(
+      "SELECT COUNT(*) AS c FROM messages WHERE direction = 'out' AND status = 'replied' AND created_at >= ? AND created_at < ?"
+    )
+    .get(startStr, endStr).c;
+  const activeConversations = db
+    .prepare('SELECT COUNT(DISTINCT contact_id) AS c FROM messages WHERE created_at >= ? AND created_at < ?')
+    .get(startStr, endStr).c;
+
+  const dateKey = getZonedDateKey(now, config.timezone);
+  const cost = getDailyCost(dateKey);
+  const costLimitDaily = Number(getSetting('costLimitDaily', config.defaults.costLimitDaily));
 
   return {
     messagesReceived: received,
     repliesSent: replied,
     activeConversations,
-    estimatedCostToday: Number(estimatedCost.toFixed(4))
+    estimatedCostToday: Number(cost.estimatedCost.toFixed(4)),
+    costLimitDaily,
+    costLimitReached: cost.estimatedCost >= costLimitDaily
   };
+}
+
+// ── FEATURE 2: daily API cost tracking ─────────────────────────────────────
+// Keyed by local calendar date (config.timezone) so the total naturally resets
+// at local midnight — no separate reset job needed, a new date just starts a
+// fresh row.
+
+export function getDailyCost(date) {
+  const row = db.prepare('SELECT * FROM daily_costs WHERE date = ?').get(date);
+  if (!row) {
+    return { date, promptTokens: 0, completionTokens: 0, estimatedCost: 0, limitAlertSent: false };
+  }
+  return {
+    date: row.date,
+    promptTokens: row.prompt_tokens,
+    completionTokens: row.completion_tokens,
+    estimatedCost: row.estimated_cost,
+    limitAlertSent: Boolean(row.limit_alert_sent)
+  };
+}
+
+const upsertDailyCostStmt = db.prepare(`
+  INSERT INTO daily_costs (date, prompt_tokens, completion_tokens, estimated_cost)
+  VALUES (@date, @promptTokens, @completionTokens, @cost)
+  ON CONFLICT(date) DO UPDATE SET
+    prompt_tokens = prompt_tokens + excluded.prompt_tokens,
+    completion_tokens = completion_tokens + excluded.completion_tokens,
+    estimated_cost = estimated_cost + excluded.estimated_cost
+`);
+
+export function addDailyCost(date, promptTokens, completionTokens, cost) {
+  upsertDailyCostStmt.run({ date, promptTokens, completionTokens, cost });
+  return getDailyCost(date);
+}
+
+export function markCostAlertSent(date) {
+  db.prepare(
+    `INSERT INTO daily_costs (date, limit_alert_sent) VALUES (?, 1)
+     ON CONFLICT(date) DO UPDATE SET limit_alert_sent = 1`
+  ).run(date);
+}
+
+// ── FEATURE 4: daily summary ───────────────────────────────────────────────
+
+export function insertSummary({ periodStart, periodEnd, content, messageCount, repliedCount, contactCount, trigger }) {
+  const info = db
+    .prepare(
+      `INSERT INTO summaries (period_start, period_end, content, message_count, replied_count, contact_count, trigger)
+       VALUES (@periodStart, @periodEnd, @content, @messageCount, @repliedCount, @contactCount, @trigger)`
+    )
+    .run({ periodStart, periodEnd, content, messageCount, repliedCount, contactCount, trigger });
+  return db.prepare('SELECT * FROM summaries WHERE id = ?').get(info.lastInsertRowid);
+}
+
+export function listSummaries({ limit = 30, offset = 0 } = {}) {
+  return db.prepare('SELECT * FROM summaries ORDER BY id DESC LIMIT ? OFFSET ?').all(limit, offset);
+}
+
+// Personal (non-group) chat messages in (sinceIso, untilIso], for the daily
+// summary generator. Only real conversation turns are included — the empty-body
+// skip rows (rate_limited, blacklisted, etc.) are deliberately excluded.
+export function getMessagesForSummary(sinceIso, untilIso) {
+  return db
+    .prepare(
+      `SELECT m.contact_id AS contactId, m.contact_name AS contactName, m.direction, m.body, m.status, m.created_at AS createdAt
+       FROM messages m
+       JOIN contacts c ON c.id = m.contact_id
+       WHERE c.is_group = 0
+         AND m.created_at > ? AND m.created_at <= ?
+         AND ((m.direction = 'in' AND m.status = 'received') OR (m.direction = 'out' AND m.status = 'replied'))
+       ORDER BY m.contact_id, m.id ASC`
+    )
+    .all(sinceIso, untilIso);
+}
+
+// Called on graceful shutdown (SIGTERM/SIGINT) so WAL data is checkpointed
+// and the file handle is released cleanly before the process exits.
+export function closeDb() {
+  db.close();
 }
 
 export default db;

@@ -153,19 +153,24 @@ export default function LiveMessages() {
     const onMessage = (msg) => {
       setChats((prev) => {
         const idx = prev.findIndex((c) => c.contactId === msg.contactId);
+        const existing = idx >= 0 ? prev[idx] : null;
         const isOpenChat = selectedIdRef.current === msg.contactId;
+        // Skip/status placeholder events (rate_limited, blacklisted, etc.) always
+        // log with an empty body — they must never overwrite the chat-list
+        // preview, which should always show the last real message text.
+        const hasRealBody = Boolean(msg.body);
         const bumped = {
           contactId: msg.contactId,
-          name: (idx >= 0 && prev[idx].name) || msg.contactName,
-          number: idx >= 0 ? prev[idx].number : msg.contactId.replace('@c.us', '').replace('@lid', ''),
-          blacklisted: idx >= 0 ? prev[idx].blacklisted : 0,
-          whitelisted: idx >= 0 ? prev[idx].whitelisted : 0,
-          lastMessageBody: msg.body,
-          lastMessageDirection: msg.direction,
-          lastMessageStatus: msg.status,
-          lastMessageAt: msg.createdAt,
+          name: (existing && existing.name) || msg.contactName,
+          number: existing ? existing.number : msg.contactId.replace('@c.us', '').replace('@lid', ''),
+          blacklisted: existing ? existing.blacklisted : 0,
+          whitelisted: existing ? existing.whitelisted : 0,
+          lastMessageBody: hasRealBody ? msg.body : (existing?.lastMessageBody ?? null),
+          lastMessageDirection: hasRealBody ? msg.direction : (existing?.lastMessageDirection ?? null),
+          lastMessageStatus: hasRealBody ? msg.status : (existing?.lastMessageStatus ?? null),
+          lastMessageAt: hasRealBody ? msg.createdAt : (existing?.lastMessageAt ?? msg.createdAt),
           unreadCount:
-            msg.direction === 'in' && !isOpenChat ? (idx >= 0 ? (prev[idx].unreadCount || 0) + 1 : 1) : idx >= 0 ? prev[idx].unreadCount : 0
+            msg.direction === 'in' && !isOpenChat ? (existing ? (existing.unreadCount || 0) + 1 : 1) : existing ? existing.unreadCount : 0
         };
         const rest = idx >= 0 ? [...prev.slice(0, idx), ...prev.slice(idx + 1)] : prev;
         return [bumped, ...rest];

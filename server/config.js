@@ -13,12 +13,21 @@ function required(name, value) {
   return value;
 }
 
+// All PERSISTENT state (SQLite DB, WhatsApp session, backups, file logs) lives
+// under STORAGE_DIR. Locally this defaults to the project root, so local dev
+// needs zero extra setup and behaves exactly as before. On Railway, set
+// STORAGE_DIR to the path where a persistent Volume is mounted (e.g.
+// /app/storage) — everything outside a Volume is wiped on every deploy/restart,
+// so this is what survives redeploys.
+const storageDir = path.resolve(rootDir, process.env.STORAGE_DIR || './');
+
 export const config = {
   rootDir,
-  dataDir: path.join(rootDir, 'data'),
-  logsDir: path.join(rootDir, 'logs'),
-  dbPath: path.join(rootDir, 'data', 'sheuli.db'),
-  sessionAuthDir: path.join(rootDir, 'data', 'wwebjs_auth'),
+  storageDir,
+  dataDir: path.join(storageDir, 'data'),
+  logsDir: path.join(storageDir, 'logs'),
+  dbPath: path.join(storageDir, 'data', 'sheuli.db'),
+  sessionAuthDir: path.join(storageDir, '.wwebjs_auth'),
 
   port: Number(process.env.PORT) || 3000,
   ownerName: process.env.OWNER_NAME || 'Reduan',
@@ -30,11 +39,30 @@ export const config = {
 
   isProduction: process.env.NODE_ENV === 'production',
 
+  // FEATURE 1: Telegram alert channel. If either is empty, alerts.js silently no-ops.
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
+    chatId: process.env.TELEGRAM_CHAT_ID || ''
+  },
+
+  // FEATURE 3: automatic SQLite backups.
+  backup: {
+    dir: path.join(storageDir, 'backups'),
+    time: process.env.BACKUP_TIME && /^\d{2}:\d{2}$/.test(process.env.BACKUP_TIME) ? process.env.BACKUP_TIME : '03:00',
+    keep: 7
+  },
+
+  // FEATURE 2: gpt-4o-mini pricing constants used to compute real per-call cost
+  // (per million tokens, USD). Update here if OpenAI changes pricing.
+  pricing: {
+    gpt4oMini: { inputPerMillion: 0.15, outputPerMillion: 0.6 }
+  },
+
   defaults: {
     model: 'gpt-4o-mini',
     maxTokens: 150,
     temperature: 0.7,
-    rateLimitPerHour: 3,
+    rateLimitPerHour: 10, // 0 = unlimited (rate limiting off) — see routes/settings.js validation
     memoryLength: 10,
     whitelistMode: false,
     autoReplyEnabled: false,
@@ -42,6 +70,10 @@ export const config = {
     scheduleStart: '23:00',
     scheduleEnd: '07:30',
     scheduleDays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    costLimitDaily: 0.5,
+    dailySummaryEnabled: true,
+    dailySummaryTime: '08:00',
+    dailySummarySkipIfEmpty: false,
     systemPrompt:
       'তোমার নাম Sheuli (শিউলি)। তুমি Reduan-এর personal AI assistant। Reduan এখন busy বা ঘুমাচ্ছে। ' +
       'ভদ্রভাবে, উষ্ণভাবে এবং সংক্ষেপে (১–২ লাইন) reply দাও। জরুরি বিষয় হলে call করতে বলো। ' +

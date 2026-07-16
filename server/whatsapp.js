@@ -8,6 +8,9 @@ import logger from './logger.js';
 import { generateReply } from './ai.js';
 import { classifyChatId } from './chatFilter.js';
 import { isSheuliActive } from './schedule.js';
+import { sendAlert } from './alerts.js';
+import { isCostLimitReached, recordApiCost } from './costGuard.js';
+import { runDailySummary } from './summary.js';
 import {
   upsertContact,
   touchContact,
@@ -36,6 +39,11 @@ let lastQr = null;
 const processedMessageIds = new Set();
 const busyContacts = new Set();
 
+// FEATURE 1: tracks whether the last connection event was a disconnect/auth
+// failure, so a subsequent 'ready' event knows to send a "back online"
+// recovery alert (and only then — not on the very first connect ever).
+let hadConnectionIssue = false;
+
 function emitStatus(status) {
   connectionStatus = status;
   if (status === 'connected') lastQr = null;
@@ -63,6 +71,24 @@ function logQuickSkip(chatId, status) {
 
 async function handleSelfCommand(message, body) {
   const command = body.trim().toLowerCase();
+
+  // FEATURE 4: on-demand daily summary, covering everything since the last
+  // summary was sent (scheduled or manual). Same fromMe-only / self-chat-only
+  // protection as /on and /off, since this is only ever reached from there.
+  if (command === '/summary') {
+    try {
+      await runDailySummary('manual');
+    } catch (err) {
+      logger.error({ err: err?.message || err }, 'Manual /summary command failed');
+      try {
+        await message.reply('😔 Summary বানাতে সমস্যা হয়েছে, একটু পরে আবার চেষ্টা করো।');
+      } catch {
+        // Ignore — best-effort error notice only.
+      }
+    }
+    return true;
+  }
+
   if (command !== '/on' && command !== '/off') return false;
 
   const settings = getAllSettings();
@@ -233,10 +259,24 @@ async function handleIncomingMessage(message) {
     return;
   }
 
-  const replyCount = countRepliesInLastHour(chatId);
+  // rateLimitPerHour is read fresh from settings on every message (no cached
+  // counter), so raising/lowering it — or turning it off entirely — takes
+  // effect immediately on the contact's very next message, no restart needed.
+  // 0 means unlimited: skip the check (and the DB query) entirely.
   const rateLimit = settings.rateLimitPerHour ?? config.defaults.rateLimitPerHour;
-  if (replyCount >= rateLimit) {
-    recordSkip('rate_limited');
+  if (rateLimit > 0) {
+    const replyCount = countRepliesInLastHour(chatId);
+    if (replyCount >= rateLimit) {
+      recordSkip('rate_limited');
+      return;
+    }
+  }
+
+  // FEATURE 2: daily cost guard — once the configured limit is hit, stop
+  // making OpenAI calls for the rest of the local day rather than risk a
+  // surprise bill from a flood of messages.
+  if (isCostLimitReached()) {
+    recordSkip('skipped-cost-limit');
     return;
   }
 
@@ -257,6 +297,10 @@ async function handleIncomingMessage(message) {
       incomingBody,
       history: conversationHistory,
       isFirstReply: introDue
+    });
+
+    recordApiCost(promptTokens, completionTokens).catch((err) => {
+      logger.warn({ err: err?.message || err }, 'Failed to record API cost');
     });
 
     try {
@@ -331,6 +375,20 @@ export function getConnectionStatus() {
 
 export function getLastQr() {
   return lastQr;
+}
+
+// FEATURE 4: "Message Yourself" is just the chat whose ID equals the logged-in
+// account's own WhatsApp ID.
+export function getSelfChatId() {
+  return client?.info?.wid?._serialized || null;
+}
+
+export async function sendSelfMessage(text) {
+  const selfId = getSelfChatId();
+  if (!client || !selfId) {
+    throw new Error('WhatsApp client is not connected');
+  }
+  await client.sendMessage(selfId, text, { linkPreview: false });
 }
 
 async function getBrowserExecutablePath() {
@@ -560,6 +618,15 @@ export async function initWhatsApp(io) {
     }
     emitStatus('connected');
     logger.info('Sheuli is connected to WhatsApp');
+
+    // FEATURE 1: recovery alert — only fires if we previously alerted about a
+    // disconnect/auth failure, never on the very first connect.
+    if (hadConnectionIssue) {
+      hadConnectionIssue = false;
+      sendAlert('🟢 Sheuli is back online.').catch((err) => {
+        logger.warn({ err: err?.message || err }, 'Failed to send recovery alert');
+      });
+    }
   });
 
   client.on('authenticated', () => {
@@ -573,6 +640,10 @@ export async function initWhatsApp(io) {
     }
     emitStatus('auth_failure');
     logger.error({ msg }, 'WhatsApp authentication failed — cleaning up session...');
+    hadConnectionIssue = true;
+    sendAlert(`🔴 Sheuli lost WhatsApp connection: ${msg}. Scan QR again from the dashboard.`).catch((err) => {
+      logger.warn({ err: err?.message || err }, 'Failed to send auth-failure alert');
+    });
     await resetClient('auth_failure');
   });
 
@@ -583,6 +654,10 @@ export async function initWhatsApp(io) {
     }
     emitStatus('disconnected');
     logger.warn({ reason }, 'WhatsApp disconnected — cleaning up and attempting clean reconnect...');
+    hadConnectionIssue = true;
+    sendAlert(`🔴 Sheuli lost WhatsApp connection: ${reason}. Scan QR again from the dashboard.`).catch((err) => {
+      logger.warn({ err: err?.message || err }, 'Failed to send disconnect alert');
+    });
     await resetClient(reason);
   });
 
@@ -606,4 +681,12 @@ export function getClient() {
   return client;
 }
 
-export default { initWhatsApp, getConnectionStatus, getLastQr, getClient, destroyClient };
+export default {
+  initWhatsApp,
+  getConnectionStatus,
+  getLastQr,
+  getClient,
+  destroyClient,
+  getSelfChatId,
+  sendSelfMessage
+};

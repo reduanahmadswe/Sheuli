@@ -12,7 +12,7 @@
     "dashboard:dev": "npm run dev --prefix dashboard",
     "dashboard:build": "npm run build --prefix dashboard",
     "install:all": "npm install && npm install --prefix dashboard",
-    "postinstall": "npx puppeteer browsers install chrome",
+    "postinstall": "node scripts/postinstall.js",
     "build": "npm run dashboard:build",
     "setup": "npm run install:all && npm run build"
   },

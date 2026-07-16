@@ -2,8 +2,15 @@ import OpenAI from 'openai';
 import config from './config.js';
 import { getAllSettings } from './db.js';
 import logger from './logger.js';
+import { sendAlert } from './alerts.js';
 
-const openai = new OpenAI({ apiKey: config.openaiApiKey });
+export const openai = new OpenAI({ apiKey: config.openaiApiKey });
+
+// FEATURE 1: alert once (not spam) after 3+ consecutive OpenAI failures, and
+// clear the streak on the next success so a future run of failures alerts again.
+const CONSECUTIVE_FAILURE_ALERT_THRESHOLD = 3;
+let consecutiveFailures = 0;
+let failureAlertSent = false;
 
 const BANGLA_UNICODE_RANGE = /[ঀ-৿]/;
 const BANGLISH_WORDS = [
@@ -78,6 +85,9 @@ export async function generateReply({ contactId, incomingBody, history = [], isF
       throw new Error('Empty completion from OpenAI');
     }
 
+    consecutiveFailures = 0;
+    failureAlertSent = false;
+
     return {
       reply,
       promptTokens: usage.prompt_tokens || 0,
@@ -86,6 +96,17 @@ export async function generateReply({ contactId, incomingBody, history = [], isF
     };
   } catch (err) {
     logger.error({ err: err.message, contactId }, 'OpenAI request failed, using fallback message');
+
+    consecutiveFailures += 1;
+    if (consecutiveFailures >= CONSECUTIVE_FAILURE_ALERT_THRESHOLD && !failureAlertSent) {
+      failureAlertSent = true;
+      sendAlert(
+        `🟠 OpenAI API has failed ${consecutiveFailures} times in a row. Sheuli is using fallback replies until it recovers.`
+      ).catch((alertErr) => {
+        logger.warn({ err: alertErr?.message || alertErr }, 'Failed to send consecutive-failure alert');
+      });
+    }
+
     return {
       reply: config.defaults.fallbackMessage,
       promptTokens: 0,

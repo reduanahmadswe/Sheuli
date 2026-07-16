@@ -1,6 +1,3 @@
-2026/07/16-01:06:58.360 3da0 Reusing MANIFEST E:\Sheuli\data\wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
-2026/07/16-01:06:58.364 3da0 Recovering log #4
-2026/07/16-01:06:58.364 3da0 Reusing old log E:\Sheuli\data\wwebjs_auth\session\Default\Local Storage\leveldb/000004.log 
-2026/07/16-01:07:58.368 3da0 Level-0 table #7: started
-2026/07/16-01:07:58.372 3da0 Level-0 table #7: 20071 bytes OK
-2026/07/16-01:07:58.375 3da0 Delete type=0 #4
+2026/07/17-01:36:38.057 2720 Reusing MANIFEST E:\Sheuli\data\wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
+2026/07/17-01:36:38.060 2720 Recovering log #10
+2026/07/17-01:36:38.061 2720 Reusing old log E:\Sheuli\data\wwebjs_auth\session\Default\Local Storage\leveldb/000010.log 

@@ -33,6 +33,57 @@ export function getZonedParts(date, timezone) {
   return { weekday: map.weekday, time: `${map.hour}:${map.minute}` };
 }
 
+// Returns the calendar date (YYYY-MM-DD) that `date` falls on inside `timezone`.
+// Used to key daily cost totals / backup runs / summary "already sent today"
+// checks — everything that must reset at LOCAL midnight, not UTC midnight.
+export function getZonedDateKey(date, timezone) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+}
+
+function getTimezoneOffsetMinutes(date, timezone) {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]));
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second)
+  );
+  return (asUtc - date.getTime()) / 60000;
+}
+
+// The UTC instant range [start, end) that corresponds to one full local calendar
+// day in `timezone` containing `date` — i.e. local midnight to local midnight.
+export function getZonedDayBoundsUtc(date, timezone) {
+  const offsetMin = getTimezoneOffsetMinutes(date, timezone);
+  const [y, m, d] = getZonedDateKey(date, timezone).split('-').map(Number);
+  const startUtcMs = Date.UTC(y, m - 1, d, 0, 0, 0) - offsetMin * 60000;
+  return { startUtc: new Date(startUtcMs), endUtc: new Date(startUtcMs + 24 * 60 * 60 * 1000) };
+}
+
+// Formats a JS Date as the 'YYYY-MM-DD HH:MM:SS' UTC string SQLite's
+// datetime('now') produces, so it can be compared lexicographically against
+// stored created_at columns.
+export function toSqliteUtc(date) {
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 /**
  * Is `now` inside the configured schedule window, honoring day-of-week and
  * overnight (start > end) windows correctly? An overnight window like
@@ -116,6 +167,9 @@ export default {
   DEFAULT_DAYS,
   toMinutes,
   getZonedParts,
+  getZonedDateKey,
+  getZonedDayBoundsUtc,
+  toSqliteUtc,
   isWithinScheduleWindow,
   isSheuliActive,
   computeNextChange,
