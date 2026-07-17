@@ -23,15 +23,17 @@ import {
   markMessageProcessed,
   isIntroDue,
   setIntroSent,
-  countRepliesInLastHour
+  countRepliesInLastHour,
+  clearAllChatHistory
 } from './db.js';
 
 const { Client, LocalAuth } = pkg;
 
 let client = null;
 let ioRef = null;
-let connectionStatus = 'initializing'; // initializing | qr | connected | disconnected | auth_failure
+let connectionStatus = 'initializing'; // initializing | qr | connected | disconnected | auth_failure | logging_out
 let lastQr = null;
+let switchingAccount = false;
 
 // In-memory de-dup cache (mirrors the processed_messages table for fast-path checks)
 // and a per-contact busy lock so a second incoming message can't trigger a second
@@ -44,10 +46,25 @@ const busyContacts = new Set();
 // recovery alert (and only then — not on the very first connect ever).
 let hadConnectionIssue = false;
 
+export function isSwitchingAccount() {
+  return switchingAccount;
+}
+
+export function getClientInfo() {
+  if (connectionStatus !== 'connected' || !client?.info) {
+    return null;
+  }
+  const wid = client.info.wid;
+  const number = wid?.user || (wid?._serialized ? wid._serialized.replace('@c.us', '').replace('@lid', '') : null);
+  const name = client.info.pushname || null;
+  const platform = client.info.platform || null;
+  return { number, name, platform };
+}
+
 function emitStatus(status) {
   connectionStatus = status;
   if (status === 'connected') lastQr = null;
-  ioRef?.emit('whatsapp:status', { status });
+  ioRef?.emit('whatsapp:status', { status, info: getClientInfo() });
 }
 
 function randomDelay(minMs = 3000, maxMs = 8000) {
@@ -130,6 +147,10 @@ function chatTypeLabel(chatId) {
 }
 
 async function handleIncomingMessage(message) {
+  if (switchingAccount) {
+    logger.info('Message dropped: WhatsApp account is currently being logged out / switched');
+    return;
+  }
   const rawChatId = message.from;
   const rawNumber = (rawChatId || '').replace('@c.us', '').replace('@lid', '').replace('@g.us', '');
   logger.info(
@@ -525,6 +546,10 @@ export async function destroyClient() {
 }
 
 async function resetClient(reason) {
+  if (switchingAccount) {
+    logger.info({ reason }, 'resetClient called while switchingAccount is true — aborting auto-reconnect');
+    return;
+  }
   if (isResetting) return;
   isResetting = true;
   if (startupWatchdog) {
@@ -702,6 +727,10 @@ async function doInitWhatsApp(io) {
       clearTimeout(startupWatchdog);
       startupWatchdog = null;
     }
+    if (switchingAccount) {
+      logger.info({ msg }, 'auth_failure fired during intentional logout — ignoring auto-reconnect and alert');
+      return;
+    }
     emitStatus('auth_failure');
     logger.error({ msg }, 'WhatsApp authentication failed — cleaning up session...');
     hadConnectionIssue = true;
@@ -715,6 +744,10 @@ async function doInitWhatsApp(io) {
     if (startupWatchdog) {
       clearTimeout(startupWatchdog);
       startupWatchdog = null;
+    }
+    if (switchingAccount) {
+      logger.info({ reason }, 'disconnected fired during intentional logout — ignoring auto-reconnect and alert');
+      return;
     }
     emitStatus('disconnected');
     logger.warn({ reason }, 'WhatsApp disconnected — cleaning up and attempting clean reconnect...');
@@ -745,6 +778,105 @@ export function getClient() {
   return client;
 }
 
+async function cleanSessionFolders() {
+  const authDir = config.sessionAuthDir;
+  const cacheDir = path.join(config.storageDir, '.wwebjs_cache');
+  const dirs = [authDir, cacheDir];
+
+  for (const dirPath of dirs) {
+    if (!fs.existsSync(dirPath)) continue;
+    logger.info({ dirPath }, 'Removing WhatsApp session directory...');
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await fs.promises.rm(dirPath, { recursive: true, force: true });
+        break;
+      } catch (err) {
+        if (attempt === 3) {
+          logger.warn({ err: err?.message || err, dirPath }, 'Failed to remove session directory after 3 attempts');
+        } else {
+          logger.debug({ err: err?.message || err, dirPath, attempt }, 'File lock encountered during removal, retrying in 1s...');
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+    }
+  }
+}
+
+export async function logoutWhatsApp({ clearHistory = false } = {}) {
+  if (switchingAccount) {
+    logger.warn('logoutWhatsApp called while already switching accounts — ignoring duplicate request');
+    return { ok: false, error: 'Account switch already in progress' };
+  }
+  switchingAccount = true;
+  emitStatus('logging_out');
+
+  try {
+    if (startupWatchdog) {
+      clearTimeout(startupWatchdog);
+      startupWatchdog = null;
+    }
+
+    if (client) {
+      try {
+        logger.info('Calling client.logout() to unlink device from phone...');
+        await client.logout();
+      } catch (err) {
+        logger.warn({ err: err?.message || err }, 'client.logout() threw or client already disconnected (continuing)');
+      }
+
+      logger.info('Destroying client and closing Puppeteer browser...');
+      client.removeAllListeners();
+      try {
+        await client.destroy();
+      } catch (err) {
+        logger.warn({ err: err?.message || err }, 'client.destroy() threw (continuing)');
+      }
+      client = null;
+    }
+
+    await cleanSessionFolders();
+
+    if (clearHistory) {
+      logger.info('Wiping all chat history and conversation memory as requested...');
+      try {
+        clearAllChatHistory();
+      } catch (err) {
+        logger.error({ err: err?.message || err }, 'Failed to wipe chat history during logout');
+      }
+    }
+
+    const logoutMsgText = 'WhatsApp account was logged out from the dashboard. Waiting for a new QR scan.';
+    logMessage({
+      contactId: 'system',
+      contactName: 'System',
+      direction: 'out',
+      body: logoutMsgText,
+      status: 'whatsapp-logout'
+    });
+    ioRef?.emit('message:new', {
+      contactId: 'system',
+      contactName: 'System',
+      direction: 'out',
+      body: logoutMsgText,
+      status: 'whatsapp-logout',
+      createdAt: new Date().toISOString()
+    });
+
+    sendAlert(`🔄 ${logoutMsgText}`).catch((err) => {
+      logger.warn({ err: err?.message || err }, 'Failed to send logout Telegram alert');
+    });
+
+    logger.info('Reinitializing fresh WhatsApp client for new QR scan...');
+    await initWhatsApp(ioRef);
+    return { ok: true };
+  } catch (err) {
+    logger.error({ err: err?.message || err }, 'Error during WhatsApp logout sequence');
+    return { ok: false, error: err?.message || 'Logout failed' };
+  } finally {
+    switchingAccount = false;
+  }
+}
+
 export default {
   initWhatsApp,
   getConnectionStatus,
@@ -752,5 +884,8 @@ export default {
   getClient,
   destroyClient,
   getSelfChatId,
-  sendSelfMessage
+  sendSelfMessage,
+  isSwitchingAccount,
+  getClientInfo,
+  logoutWhatsApp
 };

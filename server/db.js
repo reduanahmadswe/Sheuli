@@ -273,6 +273,13 @@ export function markContactRead(id) {
   db.prepare("UPDATE contacts SET last_read_at = datetime('now') WHERE id = ?").run(id);
 }
 
+export function clearAllChatHistory() {
+  db.prepare('DELETE FROM messages').run();
+  db.prepare('DELETE FROM contacts').run();
+  db.prepare('DELETE FROM processed_messages').run();
+  logger.info('Wiped all chat history and conversation memory (messages, contacts, processed_messages tables cleared)');
+}
+
 const HOURS_24_MS = 24 * 60 * 60 * 1000;
 
 export function isIntroDue(contact) {

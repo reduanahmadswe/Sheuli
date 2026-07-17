@@ -10,7 +10,7 @@ import { Server } from 'socket.io';
 import config from './config.js';
 import logger from './logger.js';
 import { requireAuth, COOKIE_NAME } from './middleware/auth.js';
-import { initWhatsApp, getConnectionStatus, getLastQr, destroyClient } from './whatsapp.js';
+import { initWhatsApp, getConnectionStatus, getLastQr, destroyClient, getClientInfo } from './whatsapp.js';
 import { getAllSettings, closeDb } from './db.js';
 import { getScheduleStatus } from './schedule.js';
 import { sendAlert } from './alerts.js';
@@ -26,6 +26,7 @@ import statusRoutes from './routes/status.js';
 import chatsRoutes from './routes/chats.js';
 import summariesRoutes from './routes/summaries.js';
 import diagnosticsRoutes from './routes/diagnostics.js';
+import whatsappRoutes from './routes/whatsapp.js';
 
 fs.mkdirSync(config.dataDir, { recursive: true });
 fs.mkdirSync(config.logsDir, { recursive: true });
@@ -78,6 +79,7 @@ app.use('/api/status', requireAuth, statusRoutes);
 app.use('/api/chats', requireAuth, chatsRoutes);
 app.use('/api/summaries', requireAuth, summariesRoutes);
 app.use('/api/diagnostics', requireAuth, diagnosticsRoutes);
+app.use('/api/whatsapp', requireAuth, whatsappRoutes);
 
 const dashboardDist = path.join(config.rootDir, 'dashboard', 'dist');
 if (fs.existsSync(dashboardDist)) {
@@ -110,7 +112,7 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
   logger.debug({ id: socket.id }, 'Dashboard client connected via WebSocket');
-  socket.emit('whatsapp:status', { status: getConnectionStatus() });
+  socket.emit('whatsapp:status', { status: getConnectionStatus(), info: getClientInfo() });
   const qr = getLastQr();
   if (qr) socket.emit('whatsapp:qr', { qr });
   socket.emit('schedule:status', getScheduleStatus(getAllSettings()));

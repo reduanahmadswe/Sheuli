@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import config from '../config.js';
-import { getConnectionStatus, getSelfChatId } from '../whatsapp.js';
+import { getConnectionStatus, getSelfChatId, getClientInfo, isSwitchingAccount } from '../whatsapp.js';
 import { getAllSettings, getMessageCount, getLastMessageTimestamps, getDailyCost } from '../db.js';
 import { isSheuliActive, getZonedDateKey } from '../schedule.js';
 import { isAlertingEnabled } from '../alerts.js';
@@ -23,11 +23,14 @@ router.get('/', (req, res) => {
   const dateKey = getZonedDateKey(new Date(), config.timezone);
   const todayCost = getDailyCost(dateKey);
   const { lastIncomingAt, lastReplyAt } = getLastMessageTimestamps();
+  const info = getClientInfo();
 
   res.json({
     whatsapp: {
       state: getConnectionStatus(),
-      number: selfId ? selfId.replace('@c.us', '').replace('@lid', '') : null
+      number: selfId ? selfId.replace('@c.us', '').replace('@lid', '') : (info?.number || null),
+      name: info?.name || null,
+      switchingAccount: isSwitchingAccount()
     },
     autoReply: {
       active: isSheuliActive(settings),

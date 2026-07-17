@@ -1,8 +1,19 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/api.js';
+import getSocket from '../lib/socket.js';
 
 const MODEL_OPTIONS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const STATUS_LABEL = {
+  initializing: { text: 'Starting up…', color: 'bg-yellow-400' },
+  qr: { text: 'Waiting for QR scan', color: 'bg-yellow-400' },
+  connected: { text: 'Connected', color: 'bg-emerald-400' },
+  disconnected: { text: 'Disconnected — reconnecting', color: 'bg-red-400' },
+  auth_failure: { text: 'Authentication failed', color: 'bg-red-400' },
+  logging_out: { text: 'Logging out…', color: 'bg-yellow-400' }
+};
 
 function Toggle({ checked, onChange, disabled = false }) {
   return (
@@ -94,10 +105,28 @@ export default function Settings() {
   const [diagnostics, setDiagnostics] = useState(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(true);
 
+  const [waStatus, setWaStatus] = useState('initializing');
+  const [waInfo, setWaInfo] = useState(null);
+  const [waQr, setWaQr] = useState(null);
+  const [switchingAccount, setSwitchingAccount] = useState(false);
+
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [clearHistoryCheckbox, setClearHistoryCheckbox] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
+  const navigate = useNavigate();
+
   const loadDiagnostics = async () => {
     try {
       const { data } = await api.get('/diagnostics');
       setDiagnostics(data);
+      if (data.whatsapp) {
+        setWaStatus(data.whatsapp.state);
+        if (data.whatsapp.number || data.whatsapp.name) {
+          setWaInfo({ number: data.whatsapp.number, name: data.whatsapp.name });
+        }
+        setSwitchingAccount(Boolean(data.whatsapp.switchingAccount));
+      }
     } catch {
       // Leave the last-known values displayed rather than clearing them.
     } finally {
@@ -108,10 +137,49 @@ export default function Settings() {
   useEffect(() => {
     api.get('/settings').then(({ data }) => setSettings(data));
     api.get('/settings/schedule').then(({ data }) => setSchedule(data));
+    api.get('/status').then(({ data }) => {
+      setWaStatus(data.connection);
+      setWaInfo(data.info);
+      setSwitchingAccount(Boolean(data.switchingAccount));
+      if (data.connection === 'connected' || data.connection === 'logging_out') setWaQr(null);
+    });
     loadDiagnostics();
     const interval = setInterval(loadDiagnostics, 10000);
-    return () => clearInterval(interval);
+
+    const socket = getSocket();
+    const onWaStatus = ({ status, info }) => {
+      setWaStatus(status);
+      if (info !== undefined) setWaInfo(info);
+      if (status === 'logging_out') setSwitchingAccount(true);
+      if (status === 'connected' || status === 'logging_out') setWaQr(null);
+      if (status === 'qr' || status === 'connected') setSwitchingAccount(false);
+    };
+    const onWaQr = ({ qr }) => setWaQr(qr);
+
+    socket.on('whatsapp:status', onWaStatus);
+    socket.on('whatsapp:qr', onWaQr);
+
+    return () => {
+      clearInterval(interval);
+      socket.off('whatsapp:status', onWaStatus);
+      socket.off('whatsapp:qr', onWaQr);
+    };
   }, []);
+
+  const handleConfirmLogout = async () => {
+    setLoggingOut(true);
+    setLogoutError('');
+    try {
+      await api.post('/whatsapp/logout', { clearHistory: clearHistoryCheckbox });
+      setShowLogoutModal(false);
+      setClearHistoryCheckbox(false);
+      navigate('/');
+    } catch (err) {
+      setLogoutError(err.response?.data?.error || 'Failed to log out WhatsApp account.');
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   // Keeps the number input in sync with the saved value, but only while rate
   // limiting is on — while off (0), the input keeps whatever the owner last
@@ -220,6 +288,50 @@ export default function Settings() {
       <div className="rounded-2xl border border-white/10 bg-night-400/30 px-4 py-3 text-xs text-petal-dim">
         🔒 Sheuli only replies to personal chats. Groups, communities, channels and broadcasts are always ignored.
       </div>
+
+      <Section
+        title="WhatsApp Account"
+        description="Manage the WhatsApp account currently linked to Sheuli."
+      >
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full ${(STATUS_LABEL[waStatus] || STATUS_LABEL.initializing).color} animate-pulse`} />
+              <span className="font-semibold text-petal">{(STATUS_LABEL[waStatus] || STATUS_LABEL.initializing).text}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-petal-dim">
+              <p>
+                Number: <span className="font-mono font-medium text-petal">{waInfo?.number ? `+${waInfo.number}` : 'Not linked'}</span>
+              </p>
+              <p>
+                Name: <span className="font-medium text-petal">{waInfo?.name || '—'}</span>
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setLogoutError('');
+              setShowLogoutModal(true);
+            }}
+            disabled={waStatus === 'logging_out' || switchingAccount || loggingOut || saving}
+            className="w-fit rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 shadow-glow-sm transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Logout WhatsApp
+          </button>
+        </div>
+
+        {waStatus === 'qr' && waQr && (
+          <div className="mt-5 flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-night-500/60 p-4">
+            <p className="text-sm font-medium text-petal">Scan to link a new WhatsApp account:</p>
+            <div className="rounded-xl bg-white p-3 shadow-glow">
+              <img src={waQr} alt="Scan this QR code with WhatsApp" className="h-48 w-48" />
+            </div>
+            <p className="text-center text-xs text-petal-dim">
+              Open WhatsApp → Linked Devices → Link a Device, then scan this code.
+            </p>
+          </div>
+        )}
+      </Section>
 
       <Section
         title="🩺 Diagnostics"
@@ -540,6 +652,49 @@ export default function Settings() {
       </Section>
 
       {savedAt && <p className="text-xs text-petal-dim">Saved at {savedAt.toLocaleTimeString()}</p>}
+
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-night-400 p-6 shadow-2xl backdrop-blur-xl">
+            <h3 className="text-lg font-bold text-petal">Logout WhatsApp?</h3>
+            <p className="mt-3 text-sm leading-relaxed text-petal-dim">
+              This will unlink the current WhatsApp account ({waInfo?.number ? `+${waInfo.number}` : 'the currently linked account'}). Sheuli will stop replying until you scan the QR code with an account. This does NOT delete your chat history or settings.
+            </p>
+            
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-night-500/50 p-3.5 transition hover:border-white/20">
+              <input
+                type="checkbox"
+                checked={clearHistoryCheckbox}
+                onChange={(e) => setClearHistoryCheckbox(e.target.checked)}
+                disabled={loggingOut}
+                className="mt-0.5 h-4 w-4 rounded border-white/20 bg-night-500 text-sheuli accent-sheuli focus:ring-0"
+              />
+              <span className="text-xs font-medium text-petal">
+                Also clear all chat history and conversation memory
+              </span>
+            </label>
+
+            {logoutError && <p className="mt-3 text-xs text-red-400">{logoutError}</p>}
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                onClick={() => !loggingOut && setShowLogoutModal(false)}
+                disabled={loggingOut}
+                className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-petal-dim transition hover:bg-white/5 hover:text-petal disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmLogout}
+                disabled={loggingOut}
+                className="rounded-xl bg-red-500 px-5 py-2 text-sm font-semibold text-white shadow-glow-sm transition hover:bg-red-600 disabled:opacity-50"
+              >
+                {loggingOut ? 'Logging out…' : 'Logout'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

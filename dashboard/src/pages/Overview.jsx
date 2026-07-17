@@ -7,7 +7,8 @@ const STATUS_LABEL = {
   qr: { text: 'Waiting for QR scan', color: 'bg-yellow-400' },
   connected: { text: 'Connected', color: 'bg-emerald-400' },
   disconnected: { text: 'Disconnected — reconnecting', color: 'bg-red-400' },
-  auth_failure: { text: 'Authentication failed', color: 'bg-red-400' }
+  auth_failure: { text: 'Authentication failed', color: 'bg-red-400' },
+  logging_out: { text: 'Logging out…', color: 'bg-yellow-400' }
 };
 
 function StatCard({ label, value, hint }) {
@@ -53,7 +54,7 @@ export default function Overview() {
       const { data } = await api.get('/status');
       setConnection(data.connection);
       setStats(data.stats);
-      if (data.connection === 'connected') setQr(null);
+      if (data.connection === 'connected' || data.connection === 'logging_out') setQr(null);
     } catch {
       // ignore, socket will keep us updated
     }
@@ -77,7 +78,7 @@ export default function Overview() {
     const socket = getSocket();
     const onStatus = ({ status }) => {
       setConnection(status);
-      if (status === 'connected') setQr(null);
+      if (status === 'connected' || status === 'logging_out') setQr(null);
     };
     const onQr = ({ qr: qrData }) => setQr(qrData);
     const onSettings = (settings) => setAutoReplyEnabled(Boolean(settings.autoReplyEnabled));
