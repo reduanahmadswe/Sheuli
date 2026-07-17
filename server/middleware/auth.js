@@ -1,21 +1,26 @@
-import config from '../config.js';
-
 const COOKIE_NAME = 'sheuli_session';
 
 // Behind Railway's (or any) reverse proxy, the container itself only ever
 // speaks plain HTTP — `req.secure` only reports the original HTTPS scheme
 // correctly because `app.set('trust proxy', 1)` makes Express trust the
 // proxy's X-Forwarded-Proto header. Basing `secure` on the ACTUAL request
-// (not just NODE_ENV) means this works correctly even if NODE_ENV is ever
-// missing/misconfigured in production, while still allowing plain-http
-// local dev (req.secure is false there, so the cookie isn't marked secure
-// and the browser still sends it back over http).
-function cookieOptions(req) {
+// rather than `NODE_ENV` ensures login works over plain HTTP (e.g., direct IP
+// access on a VM: http://34.87.43.102:3000) where browsers refuse to store
+// Secure cookies, while automatically applying Secure when accessed over HTTPS
+// (behind a proxy like Railway or Caddy).
+export function cookieOptions(req) {
+  const isSecure = Boolean(
+    req?.secure === true ||
+    req?.protocol === 'https' ||
+    (typeof req?.headers?.['x-forwarded-proto'] === 'string' && req.headers['x-forwarded-proto'].split(',')[0].trim() === 'https') ||
+    (Array.isArray(req?.headers?.['x-forwarded-proto']) && req.headers['x-forwarded-proto'][0]?.split(',')[0]?.trim() === 'https')
+  );
+
   return {
     signed: true,
     httpOnly: true,
     sameSite: 'lax',
-    secure: config.isProduction || req?.secure === true,
+    secure: isSecure,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     path: '/'
   };
@@ -43,4 +48,4 @@ export function requireAuth(req, res, next) {
 }
 
 export { COOKIE_NAME };
-export default { issueSessionCookie, clearSessionCookie, isAuthenticated, requireAuth, COOKIE_NAME };
+export default { issueSessionCookie, clearSessionCookie, isAuthenticated, requireAuth, cookieOptions, COOKIE_NAME };
