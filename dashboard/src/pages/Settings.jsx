@@ -15,10 +15,20 @@ const STATUS_LABEL = {
   connected: { text: 'Connected', color: 'bg-emerald-400' },
   disconnected: { text: 'Disconnected — reconnecting', color: 'bg-red-400' },
   auth_failure: { text: 'Authentication failed', color: 'bg-red-400' },
-  logging_out: { text: 'Logging out…', color: 'bg-yellow-400' }
+  logging_out: { text: 'Logging out…', color: 'bg-yellow-400' },
+  needs_qr: { text: 'Preparing a fresh QR to reconnect…', color: 'bg-yellow-400' }
 };
 
-function getStatusDisplay(status, percent) {
+// FIX 4: distinct copy for the account-switch window (before the fresh QR is
+// ready) and for the loop-guard recovery case (QR is ready, but it took a
+// failed auto-recovery to get there).
+function getStatusDisplay(status, percent, switchingAccount, sessionRecoveryFailed) {
+  if (switchingAccount && status !== 'qr') {
+    return { text: '🔄 Switching account — preparing a fresh QR…', color: 'bg-yellow-400' };
+  }
+  if (status === 'qr' && sessionRecoveryFailed) {
+    return { text: "Session couldn't be restored — scan the QR below to reconnect.", color: 'bg-red-400' };
+  }
   if (status === 'loading') {
     return {
       text: `⏳ Authenticated — loading chats… ${percent || 0}%`,
@@ -123,6 +133,7 @@ export default function Settings() {
   const [waInfo, setWaInfo] = useState(null);
   const [waQr, setWaQr] = useState(null);
   const [switchingAccount, setSwitchingAccount] = useState(false);
+  const [sessionRecoveryFailed, setSessionRecoveryFailed] = useState(false);
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [clearHistoryCheckbox, setClearHistoryCheckbox] = useState(false);
@@ -141,6 +152,7 @@ export default function Settings() {
           setWaInfo({ number: data.whatsapp.number, name: data.whatsapp.name });
         }
         setSwitchingAccount(Boolean(data.whatsapp.switchingAccount));
+        setSessionRecoveryFailed(Boolean(data.whatsapp.sessionRecoveryFailed));
       }
     } catch {
       // Leave the last-known values displayed rather than clearing them.
@@ -157,6 +169,7 @@ export default function Settings() {
       if (data.loadingPercent !== undefined) setLoadingPercent(data.loadingPercent);
       setWaInfo(data.info);
       setSwitchingAccount(Boolean(data.switchingAccount));
+      setSessionRecoveryFailed(Boolean(data.sessionRecoveryFailed));
       if (
         data.connection === 'authenticated' ||
         data.connection === 'loading' ||
@@ -177,8 +190,14 @@ export default function Settings() {
       if (details && typeof details === 'object') {
         if (details.loadingPercent !== undefined) setLoadingPercent(details.loadingPercent);
         if (details.info !== undefined) setWaInfo(details.info);
+        // FIX 2.4/4: trust the server's `switchingAccount` flag directly
+        // instead of re-deriving it from the status string here — the
+        // server now keeps it true until the fresh client actually reaches
+        // 'qr', and guessing it as false on 'qr' locally was reintroducing
+        // the same premature-clear race client-side.
+        setSwitchingAccount(Boolean(details.switchingAccount));
+        setSessionRecoveryFailed(Boolean(details.sessionRecoveryFailed));
       }
-      if (st === 'logging_out') setSwitchingAccount(true);
       if (
         st === 'authenticated' ||
         st === 'loading' ||
@@ -188,7 +207,6 @@ export default function Settings() {
       ) {
         setWaQr(null);
       }
-      if (st === 'qr' || st === 'ready' || st === 'connected') setSwitchingAccount(false);
     };
     const onWaQr = ({ qr }) => setWaQr(qr);
 
@@ -332,8 +350,8 @@ export default function Settings() {
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${getStatusDisplay(waStatus, loadingPercent).color} animate-pulse`} />
-              <span className="font-semibold text-petal">{getStatusDisplay(waStatus, loadingPercent).text}</span>
+              <span className={`h-2.5 w-2.5 rounded-full ${getStatusDisplay(waStatus, loadingPercent, switchingAccount, sessionRecoveryFailed).color} animate-pulse`} />
+              <span className="font-semibold text-petal">{getStatusDisplay(waStatus, loadingPercent, switchingAccount, sessionRecoveryFailed).text}</span>
             </div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-petal-dim">
               <p>
@@ -358,7 +376,13 @@ export default function Settings() {
 
         {waStatus === 'qr' && waQr && (
           <div className="mt-5 flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-night-500/60 p-4">
-            <p className="text-sm font-medium text-petal">Scan to link a new WhatsApp account:</p>
+            {sessionRecoveryFailed ? (
+              <p className="text-sm font-medium text-red-300">
+                Session couldn't be restored — scan the QR below to reconnect.
+              </p>
+            ) : (
+              <p className="text-sm font-medium text-petal">Scan to link a new WhatsApp account:</p>
+            )}
             <div className="rounded-xl bg-white p-3 shadow-glow">
               <img src={waQr} alt="Scan this QR code with WhatsApp" className="h-48 w-48" />
             </div>

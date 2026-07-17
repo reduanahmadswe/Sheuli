@@ -32,7 +32,8 @@ router.get('/', (req, res) => {
       name: details.info?.name || null,
       loadingPercent: details.loadingPercent,
       loadingMessage: details.loadingMessage,
-      switchingAccount: details.switchingAccount
+      switchingAccount: details.switchingAccount,
+      sessionRecoveryFailed: details.sessionRecoveryFailed
     },
     autoReply: {
       active: isSheuliActive(settings),

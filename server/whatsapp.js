@@ -31,7 +31,7 @@ const { Client, LocalAuth } = pkg;
 
 let client = null;
 let ioRef = null;
-let connectionStatus = 'initializing'; // initializing | qr | authenticated | loading | ready | connected | disconnected | auth_failure | logging_out
+let connectionStatus = 'initializing'; // initializing | qr | authenticated | loading | ready | connected | disconnected | auth_failure | logging_out | needs_qr
 let lastQr = null;
 let switchingAccount = false;
 let loadingPercent = 0;
@@ -40,6 +40,44 @@ let startupWatchdog = null;
 let authWatchdog = null;
 let authRetryCount = 0;
 const attachedClients = new WeakSet();
+
+// FIX 2: reasons whatsapp-web.js emits when the linked session itself is
+// dead (phone unlinked the device, or the server invalidated it) rather than
+// a transient network blip. These need a full session wipe before any
+// reconnect attempt, plus a loop guard — see the `disconnected` handler.
+const LOGOUT_REASONS = new Set(['LOGOUT', 'UNPAIRED', 'UNPAIRED_IDLE']);
+const LOGOUT_LOOP_WINDOW_MS = 5 * 60 * 1000;
+const LOGOUT_LOOP_MAX = 2;
+let logoutDisconnectTimestamps = [];
+// True once the loop guard has tripped: further LOGOUT-reason disconnects are
+// ignored (no more auto destroy/reinit cycling) until either a manual
+// dashboard logout or a successful authentication clears it.
+let sessionRecoveryFailed = false;
+
+function isLogoutReason(reason) {
+  return LOGOUT_REASONS.has(reason);
+}
+
+// FIX 2.4: lets logoutWhatsApp() await the fresh client actually reaching the
+// 'qr' state instead of just initWhatsApp() resolving (which happens earlier).
+let qrWaiters = [];
+
+function notifyQrWaiters() {
+  if (!qrWaiters.length) return;
+  const waiters = qrWaiters;
+  qrWaiters = [];
+  waiters.forEach((resolve) => resolve(true));
+}
+
+function waitForFreshQr(timeoutMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    qrWaiters.push((reached) => {
+      clearTimeout(timer);
+      resolve(reached);
+    });
+  });
+}
 
 // In-memory de-dup cache (mirrors the processed_messages table for fast-path checks)
 // and a per-contact busy lock so a second incoming message can't trigger a second
@@ -74,7 +112,11 @@ export function getConnectionDetails() {
     qr: lastQr,
     loadingPercent,
     loadingMessage,
-    switchingAccount
+    switchingAccount,
+    // FIX 4.2: tells the dashboard the current/upcoming QR is a loop-guard
+    // recovery attempt, so it can show "session couldn't be restored" instead
+    // of the normal "scan this code" copy.
+    sessionRecoveryFailed
   };
 }
 
@@ -87,9 +129,16 @@ function emitStatus(status, extra = {}) {
     status === 'loading' ||
     status === 'ready' ||
     status === 'connected' ||
-    status === 'logging_out'
+    status === 'logging_out' ||
+    status === 'needs_qr'
   ) {
-    if (status === 'authenticated' || status === 'loading' || status === 'ready' || status === 'connected') {
+    if (
+      status === 'authenticated' ||
+      status === 'loading' ||
+      status === 'ready' ||
+      status === 'connected' ||
+      status === 'needs_qr'
+    ) {
       lastQr = null;
     }
   }
@@ -607,15 +656,14 @@ async function resetClient(reason) {
       client = null;
     }
 
-    if (reason === 'LOGOUT' || reason === 'auth_failure') {
-      try {
-        const sessionDir = path.join(config.sessionAuthDir, 'session');
-        if (fs.existsSync(sessionDir)) {
-          logger.info('Removing stale/logged-out session data so a fresh QR code can be generated...');
-          fs.rmSync(sessionDir, { recursive: true, force: true });
-        }
-      } catch (err) {
-        logger.warn({ err: err?.message || err }, 'Failed to remove stale session dir');
+    if (isLogoutReason(reason) || reason === 'auth_failure') {
+      // FIX 1: full verified wipe (not just the `session` subfolder) so a
+      // fresh client can never boot against the old, now-invalid account.
+      const wipedClean = await wipeSessionData();
+      if (!wipedClean) {
+        logger.error(
+          'Proceeding with reinitialization despite an incomplete session wipe — a stale-session LOGOUT loop may recur'
+        );
       }
     } else {
       cleanAllLockfiles(config.sessionAuthDir);
@@ -811,6 +859,9 @@ function attachListeners(clientInstance) {
       logger.info('QR code generated — scan it from the dashboard or terminal below');
       const qrcodeTerminal = await import('qrcode-terminal');
       qrcodeTerminal.default.generate(qr, { small: true });
+      // FIX 2.4: unblocks logoutWhatsApp()'s wait so it can clear
+      // switchingAccount now that the fresh client actually has a QR up.
+      notifyQrWaiters();
     } catch (err) {
       logger.error({ err: err.message }, 'Failed to generate QR code');
     }
@@ -828,6 +879,10 @@ function attachListeners(clientInstance) {
       hasLoggedAuthenticated = true;
       logger.info('WhatsApp authentication successful');
     }
+    // FIX 2.2: a successful scan proves the session is good again — clear the
+    // loop guard so a future genuine logout gets the normal 2-strike grace.
+    logoutDisconnectTimestamps = [];
+    sessionRecoveryFailed = false;
     startAuthenticatedWatchdog();
   });
 
@@ -883,13 +938,62 @@ function attachListeners(clientInstance) {
       startupWatchdog = null;
     }
     stopAuthenticatedWatchdog();
+    // FIX 2.4: during an intentional dashboard logout, every disconnect this
+    // old/new client pair fires is expected — no reconnect logic, no alert.
     if (switchingAccount) {
       logger.info({ reason }, 'disconnected fired during intentional logout — ignoring auto-reconnect and alert');
       return;
     }
     emitStatus('disconnected');
-    logger.warn({ reason }, 'WhatsApp disconnected — cleaning up and attempting clean reconnect...');
     hadConnectionIssue = true;
+
+    // FIX 2.1/2.2: LOGOUT (or an equivalent "unpaired" reason) means the saved
+    // session itself is dead — blindly re-initing with the same session is
+    // what caused the destroy/reinit/disconnect loop. Handle it once, wipe
+    // the session first, and guard against it happening over and over.
+    if (isLogoutReason(reason)) {
+      if (sessionRecoveryFailed) {
+        logger.warn(
+          { reason },
+          'Ignoring further LOGOUT-disconnect — loop guard already tripped; waiting for a manual dashboard action or successful reconnect'
+        );
+        emitStatus('needs_qr');
+        return;
+      }
+
+      const now = Date.now();
+      logoutDisconnectTimestamps = logoutDisconnectTimestamps.filter((t) => now - t < LOGOUT_LOOP_WINDOW_MS);
+      logoutDisconnectTimestamps.push(now);
+
+      if (logoutDisconnectTimestamps.length > LOGOUT_LOOP_MAX) {
+        logger.error(
+          { reason, occurrencesInWindow: logoutDisconnectTimestamps.length },
+          'LOGOUT-disconnect loop detected (more than 2 within 5 minutes) — stopping auto-reinit cycling and waiting for a fresh manual QR scan'
+        );
+        logoutDisconnectTimestamps = [];
+        sessionRecoveryFailed = true;
+        emitStatus('needs_qr');
+        sendAlert("⚠️ Sheuli couldn't restore the session — please scan the QR from the dashboard").catch((err) => {
+          logger.warn({ err: err?.message || err }, 'Failed to send loop-guard alert');
+        });
+        // One last, verified-clean attempt so the user actually has a QR to
+        // scan — but the `sessionRecoveryFailed` gate above stops any further
+        // ones if this also somehow gets LOGOUT-disconnected again.
+        await resetClient(reason);
+        return;
+      }
+
+      logger.warn({ reason }, 'WhatsApp session was logged out/unpaired — wiping session and reinitializing for a fresh QR...');
+      sendAlert(`🔴 Sheuli lost WhatsApp connection: ${reason}. Scan QR again from the dashboard.`).catch((err) => {
+        logger.warn({ err: err?.message || err }, 'Failed to send disconnect alert');
+      });
+      await resetClient(reason);
+      return;
+    }
+
+    // FIX 2.3: other disconnect reasons (network blips etc.) keep the
+    // existing reconnect-with-backoff behavior, unchanged.
+    logger.warn({ reason }, 'WhatsApp disconnected — cleaning up and attempting clean reconnect...');
     sendAlert(`🔴 Sheuli lost WhatsApp connection: ${reason}. Scan QR again from the dashboard.`).catch((err) => {
       logger.warn({ err: err?.message || err }, 'Failed to send disconnect alert');
     });
@@ -909,28 +1013,60 @@ export function getClient() {
   return client;
 }
 
-async function cleanSessionFolders() {
-  const authDir = config.sessionAuthDir;
-  const cacheDir = path.join(config.storageDir, '.wwebjs_cache');
-  const dirs = [authDir, cacheDir];
+// FIX 1: everything LocalAuth ever writes under STORAGE_DIR for this app.
+// We never pass a `clientId` to LocalAuth (single-account app), so the actual
+// Chromium profile lives at `.wwebjs_auth/session` — but we wipe the entire
+// `.wwebjs_auth` tree (not just that one subfolder) so any `session-<id>`
+// directory left behind by a future multi-account change, plus the separate
+// `.wwebjs_cache` dir, are always covered too.
+function getSessionWipeTargets() {
+  return [config.sessionAuthDir, path.join(config.storageDir, '.wwebjs_cache')];
+}
 
-  for (const dirPath of dirs) {
-    if (!fs.existsSync(dirPath)) continue;
-    logger.info({ dirPath }, 'Removing WhatsApp session directory...');
-    for (let attempt = 1; attempt <= 3; attempt++) {
+function listLeftoverWipeTargets() {
+  return getSessionWipeTargets().filter((dirPath) => fs.existsSync(dirPath));
+}
+
+const SESSION_WIPE_MAX_ATTEMPTS = 5;
+const SESSION_WIPE_RETRY_DELAY_MS = 2000;
+
+// FIX 1.2/1.3: called only AFTER the old client has been destroyed (Chromium
+// closed), so we're never racing the browser's own profile-dir writes. Retries
+// up to 5 times, 2s apart, verifying the filesystem after every attempt — the
+// caller must not initialize a fresh client until this resolves, otherwise the
+// new client can boot against leftover IndexedDB/localStorage from the
+// already-unlinked account and get immediately kicked with reason LOGOUT
+// (the root cause of the account-switch loop).
+async function wipeSessionData() {
+  const targets = getSessionWipeTargets();
+
+  for (let attempt = 1; attempt <= SESSION_WIPE_MAX_ATTEMPTS; attempt += 1) {
+    for (const dirPath of targets) {
+      if (!fs.existsSync(dirPath)) continue;
       try {
         await fs.promises.rm(dirPath, { recursive: true, force: true });
-        break;
       } catch (err) {
-        if (attempt === 3) {
-          logger.warn({ err: err?.message || err, dirPath }, 'Failed to remove session directory after 3 attempts');
-        } else {
-          logger.debug({ err: err?.message || err, dirPath, attempt }, 'File lock encountered during removal, retrying in 1s...');
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
+        logger.debug(
+          { err: err?.message || err, dirPath, attempt },
+          'Session wipe hit a file lock — will verify and retry'
+        );
       }
     }
+
+    const leftover = listLeftoverWipeTargets();
+    if (leftover.length === 0) {
+      logger.info('Session wipe verified clean');
+      return true;
+    }
+
+    if (attempt < SESSION_WIPE_MAX_ATTEMPTS) {
+      logger.warn({ leftover, attempt }, 'Session wipe left data behind — retrying in 2s...');
+      await new Promise((resolve) => setTimeout(resolve, SESSION_WIPE_RETRY_DELAY_MS));
+    } else {
+      logger.error(`Session wipe INCOMPLETE: ${leftover.join(', ')}`);
+    }
   }
+  return false;
 }
 
 export async function logoutWhatsApp({ clearHistory = false } = {}) {
@@ -939,6 +1075,10 @@ export async function logoutWhatsApp({ clearHistory = false } = {}) {
     return { ok: false, error: 'Account switch already in progress' };
   }
   switchingAccount = true;
+  // FIX 2.2: a manual dashboard logout is an explicit fresh start — clear any
+  // loop-guard state left over from a prior automatic recovery attempt.
+  logoutDisconnectTimestamps = [];
+  sessionRecoveryFailed = false;
   emitStatus('logging_out');
 
   try {
@@ -957,6 +1097,9 @@ export async function logoutWhatsApp({ clearHistory = false } = {}) {
         logger.warn({ err: err?.message || err }, 'client.logout() threw or client already disconnected (continuing)');
       }
 
+      // FIX 1.3: strip listeners and fully close Chromium BEFORE deleting the
+      // profile directory — deleting while the browser still has files open
+      // is exactly what leaves stale session data behind on a locked file.
       logger.info('Destroying client and closing Puppeteer browser...');
       client.removeAllListeners();
       try {
@@ -967,7 +1110,12 @@ export async function logoutWhatsApp({ clearHistory = false } = {}) {
       client = null;
     }
 
-    await cleanSessionFolders();
+    const wipedClean = await wipeSessionData();
+    if (!wipedClean) {
+      logger.error(
+        'Proceeding with fresh WhatsApp init despite an incomplete session wipe — a stale-session LOGOUT loop may recur'
+      );
+    }
 
     if (clearHistory) {
       logger.info('Wiping all chat history and conversation memory as requested...');
@@ -995,12 +1143,30 @@ export async function logoutWhatsApp({ clearHistory = false } = {}) {
       createdAt: new Date().toISOString()
     });
 
-    sendAlert(`🔄 ${logoutMsgText}`).catch((err) => {
+    // FIX 3.3: exactly one alert for the intentional dashboard logout. The
+    // 'disconnected' events that follow (old client tearing down, new client
+    // booting) are all suppressed by the `switchingAccount` check below.
+    sendAlert('🔄 WhatsApp logged out from the dashboard — waiting for a new QR scan.').catch((err) => {
       logger.warn({ err: err?.message || err }, 'Failed to send logout Telegram alert');
     });
 
+    // FIX 2.4: subscribe for the fresh client's 'qr' event BEFORE starting
+    // init, so we can't miss it — then keep `switchingAccount` true for the
+    // whole re-init, not just until initWhatsApp() resolves (initialize()
+    // resolves once the page is loaded, well before 'qr' actually fires).
+    // Clearing the flag too early was what let a stray disconnect from the
+    // still-booting fresh client fall through to the alert/reconnect logic.
     logger.info('Reinitializing fresh WhatsApp client for new QR scan...');
+    const qrWaitPromise = waitForFreshQr(30000);
     await initWhatsApp(ioRef);
+    const reachedQr = await qrWaitPromise;
+    if (reachedQr) {
+      logger.info('Fresh client reached QR state — account switch complete');
+    } else {
+      logger.warn(
+        'Fresh client did not reach QR state within 30s of reinitializing — clearing switchingAccount anyway so the app does not get stuck'
+      );
+    }
     return { ok: true };
   } catch (err) {
     logger.error({ err: err?.message || err }, 'Error during WhatsApp logout sequence');

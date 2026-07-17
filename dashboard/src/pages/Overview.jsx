@@ -11,10 +11,20 @@ const STATUS_LABEL = {
   connected: { text: 'Connected', color: 'bg-emerald-400' },
   disconnected: { text: 'Disconnected — reconnecting', color: 'bg-red-400' },
   auth_failure: { text: 'Authentication failed', color: 'bg-red-400' },
-  logging_out: { text: 'Logging out…', color: 'bg-yellow-400' }
+  logging_out: { text: 'Logging out…', color: 'bg-yellow-400' },
+  needs_qr: { text: 'Preparing a fresh QR to reconnect…', color: 'bg-yellow-400' }
 };
 
-function getStatusDisplay(status, percent) {
+// FIX 4: distinct copy for the account-switch window (before the fresh QR is
+// ready) and for the loop-guard recovery case (QR is ready, but it took a
+// failed auto-recovery to get there).
+function getStatusDisplay(status, percent, switchingAccount, sessionRecoveryFailed) {
+  if (switchingAccount && status !== 'qr') {
+    return { text: '🔄 Switching account — preparing a fresh QR…', color: 'bg-yellow-400' };
+  }
+  if (status === 'qr' && sessionRecoveryFailed) {
+    return { text: "Session couldn't be restored — scan the QR below to reconnect.", color: 'bg-red-400' };
+  }
   if (status === 'loading') {
     return {
       text: `⏳ Authenticated — loading chats… ${percent || 0}%`,
@@ -52,6 +62,8 @@ export default function Overview() {
   const [loadingPercent, setLoadingPercent] = useState(0);
   const [info, setInfo] = useState(null);
   const [qr, setQr] = useState(null);
+  const [switchingAccount, setSwitchingAccount] = useState(false);
+  const [sessionRecoveryFailed, setSessionRecoveryFailed] = useState(false);
   const [stats, setStats] = useState({
     messagesReceived: 0,
     repliesSent: 0,
@@ -70,6 +82,8 @@ export default function Overview() {
       setConnection(data.connection);
       if (data.loadingPercent !== undefined) setLoadingPercent(data.loadingPercent);
       if (data.info !== undefined) setInfo(data.info);
+      setSwitchingAccount(Boolean(data.switchingAccount));
+      setSessionRecoveryFailed(Boolean(data.sessionRecoveryFailed));
       setStats(data.stats);
       if (
         data.connection === 'authenticated' ||
@@ -107,6 +121,8 @@ export default function Overview() {
       if (details && typeof details === 'object') {
         if (details.loadingPercent !== undefined) setLoadingPercent(details.loadingPercent);
         if (details.info !== undefined) setInfo(details.info);
+        setSwitchingAccount(Boolean(details.switchingAccount));
+        setSessionRecoveryFailed(Boolean(details.sessionRecoveryFailed));
       }
       if (
         st === 'authenticated' ||
@@ -154,7 +170,7 @@ export default function Overview() {
     }
   };
 
-  const statusInfo = getStatusDisplay(connection, loadingPercent);
+  const statusInfo = getStatusDisplay(connection, loadingPercent, switchingAccount, sessionRecoveryFailed);
   const isScheduleMode = scheduleStatus.mode === 'schedule';
   const active = isScheduleMode ? scheduleStatus.active : autoReplyEnabled;
   const nextChangeLabel = isScheduleMode ? formatInZone(scheduleStatus.nextChangeAt, scheduleStatus.timezone) : null;
@@ -214,6 +230,11 @@ export default function Overview() {
 
           {connection === 'qr' && qr && (
             <div className="mt-4 flex flex-col items-center gap-2">
+              {sessionRecoveryFailed && (
+                <p className="text-center text-sm font-medium text-red-300">
+                  Session couldn't be restored — scan the QR below to reconnect.
+                </p>
+              )}
               <div className="rounded-xl bg-white p-3 shadow-glow">
                 <img src={qr} alt="Scan this QR code with WhatsApp" className="h-48 w-48" />
               </div>

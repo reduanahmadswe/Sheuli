@@ -10,6 +10,7 @@ router.get('/', (req, res) => {
     connection: details.status,
     info: details.info,
     switchingAccount: details.switchingAccount,
+    sessionRecoveryFailed: details.sessionRecoveryFailed,
     loadingPercent: details.loadingPercent,
     loadingMessage: details.loadingMessage,
     stats: getTodayStats()

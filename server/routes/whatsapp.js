@@ -18,7 +18,8 @@ router.get('/status', (req, res) => {
     qr: details.qr,
     loadingPercent: details.loadingPercent,
     loadingMessage: details.loadingMessage,
-    switchingAccount: details.switchingAccount
+    switchingAccount: details.switchingAccount,
+    sessionRecoveryFailed: details.sessionRecoveryFailed
   });
 });
 
@@ -41,7 +42,9 @@ router.post('/logout', async (req, res) => {
     qr: details.qr,
     info: details.info,
     loadingPercent: details.loadingPercent,
-    loadingMessage: details.loadingMessage
+    loadingMessage: details.loadingMessage,
+    switchingAccount: details.switchingAccount,
+    sessionRecoveryFailed: details.sessionRecoveryFailed
   });
 });
 
