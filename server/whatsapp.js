@@ -65,6 +65,7 @@ function isLogoutReason(reason) {
 const PAIRING_REJECT_WINDOW_MS = 2 * 60 * 1000;
 let lastAuthenticatedAt = null;
 let pairingRejectedHint = false;
+let readyTimestamp = 0;
 
 // FIX 2.4: lets logoutWhatsApp() await the fresh client actually reaching the
 // 'qr' state instead of just initWhatsApp() resolving (which happens earlier).
@@ -273,6 +274,23 @@ async function handleIncomingMessage(message) {
   const chatId = message.from;
   const selfId = client.info?.wid?._serialized;
   const isSelfChat = selfId && chatId === selfId;
+
+  // ── SAFETY: Ignore old/historical offline messages ───────────────────────
+  // WhatsApp Web syncs unread/offline messages when connecting. We only reply to
+  // fresh messages arriving live while Sheuli is running.
+  const nowSec = Math.floor(Date.now() / 1000);
+  const msgSec = message.timestamp || 0;
+  if (msgSec > 0) {
+    const ageInSeconds = nowSec - msgSec;
+    if (ageInSeconds > 120 || (readyTimestamp > 0 && msgSec < (readyTimestamp - 15))) {
+      logger.info(
+        { chatId, msgSec, nowSec, ageInSeconds, readyTimestamp },
+        'Skipping offline/historical message sent before bot was ready'
+      );
+      logQuickSkip(chatId, 'skipped-offline-history');
+      return;
+    }
+  }
 
   // ── FEATURE 1: reply ONLY to personal 1-to-1 contacts ──────────────────
   // Whitelist-by-type: only individual 1-to-1 chats ("@c.us" and "@lid") are eligible at all.
@@ -910,6 +928,7 @@ function attachListeners(clientInstance) {
   });
 
   clientInstance.on('ready', () => {
+    readyTimestamp = Math.floor(Date.now() / 1000);
     if (startupWatchdog) {
       clearTimeout(startupWatchdog);
       startupWatchdog = null;
