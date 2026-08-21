@@ -198,7 +198,6 @@ export function getAllSettings() {
     timezone: config.timezone,
     systemPrompt: getSetting('systemPrompt', d.systemPrompt),
     rateLimitPerHour: getSetting('rateLimitPerHour', d.rateLimitPerHour),
-    whitelistMode: getSetting('whitelistMode', d.whitelistMode),
     model: getSetting('model', d.model),
     costLimitDaily: getSetting('costLimitDaily', d.costLimitDaily),
     dailySummaryEnabled: getSetting('dailySummaryEnabled', d.dailySummaryEnabled),
@@ -210,12 +209,21 @@ export function getAllSettings() {
 
 // ── Contacts ────────────────────────────────────────────────────────────
 
+export function isRawId(str) {
+  if (!str) return true;
+  const s = String(str).trim();
+  if (s.includes('@c.us') || s.includes('@lid') || s.includes('@g.us') || s.includes('@newsletter')) return true;
+  if (/^\d{10,}$/.test(s)) return true;
+  return false;
+}
+
 const upsertContactStmt = db.prepare(`
   INSERT INTO contacts (id, name, number, is_group)
   VALUES (@id, @name, @number, @isGroup)
   ON CONFLICT(id) DO UPDATE SET
-    name = COALESCE(excluded.name, contacts.name),
-    number = COALESCE(excluded.number, contacts.number)
+    name = CASE WHEN excluded.name IS NOT NULL THEN excluded.name ELSE contacts.name END,
+    number = COALESCE(excluded.number, contacts.number),
+    is_group = MAX(contacts.is_group, excluded.is_group)
 `);
 
 const touchContactStmt = db.prepare(`
@@ -227,8 +235,39 @@ const touchContactStmt = db.prepare(`
 const getContactStmt = db.prepare('SELECT * FROM contacts WHERE id = ?');
 
 export function upsertContact({ id, name, number, isGroup = false }) {
-  upsertContactStmt.run({ id, name: name ?? null, number: number ?? null, isGroup: isGroup ? 1 : 0 });
+  const cleanName = name && !isRawId(name) ? name.trim() : null;
+  const cleanNumber = number ? String(number).replace('@c.us', '').replace('@lid', '').replace('@g.us', '').trim() : null;
+  const flagGroup = isGroup || Boolean(id && (id.endsWith('@g.us') || id.endsWith('@newsletter') || (id.length > 17 && /^\d+$/.test(id))));
+
+  upsertContactStmt.run({
+    id,
+    name: cleanName,
+    number: cleanNumber,
+    isGroup: flagGroup ? 1 : 0
+  });
   return getContactStmt.get(id);
+}
+
+export function cleanInvalidContactNames() {
+  const contacts = db.prepare('SELECT id, name, number FROM contacts').all();
+  const updateStmt = db.prepare('UPDATE contacts SET name = ? WHERE id = ?');
+  const groupStmt = db.prepare('UPDATE contacts SET is_group = 1 WHERE id = ?');
+
+  for (const c of contacts) {
+    if (c.id && (c.id.endsWith('@g.us') || c.id.endsWith('@newsletter') || (c.id.length > 17 && /^\d+$/.test(c.id)))) {
+      groupStmt.run(c.id);
+    }
+    if (c.name && isRawId(c.name)) {
+      updateStmt.run(null, c.id);
+    }
+  }
+}
+
+// Run DB cleanup on load
+try {
+  cleanInvalidContactNames();
+} catch (err) {
+  // Ignore cleanup errors on startup
 }
 
 export function touchContact(id) {

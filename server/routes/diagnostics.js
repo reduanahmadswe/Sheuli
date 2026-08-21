@@ -3,7 +3,6 @@ import config from '../config.js';
 import { getConnectionStatus, getSelfChatId, getClientInfo, isSwitchingAccount, getConnectionDetails } from '../whatsapp.js';
 import { getAllSettings, getMessageCount, getLastMessageTimestamps, getDailyCost } from '../db.js';
 import { isSheuliActive, getZonedDateKey } from '../schedule.js';
-import { isAlertingEnabled } from '../alerts.js';
 
 const router = Router();
 
@@ -33,7 +32,8 @@ router.get('/', (req, res) => {
       loadingPercent: details.loadingPercent,
       loadingMessage: details.loadingMessage,
       switchingAccount: details.switchingAccount,
-      sessionRecoveryFailed: details.sessionRecoveryFailed
+      sessionRecoveryFailed: details.sessionRecoveryFailed,
+      pairingRejectedHint: details.pairingRejectedHint
     },
     autoReply: {
       active: isSheuliActive(settings),
@@ -48,8 +48,7 @@ router.get('/', (req, res) => {
       dailyLimit: settings.costLimitDaily
     },
     env: {
-      openaiApiKeyPresent: Boolean(config.openaiApiKey),
-      telegramConfigured: isAlertingEnabled()
+      openaiApiKeyPresent: Boolean(config.openaiApiKey)
     },
     lastIncomingAt,
     lastReplyAt,

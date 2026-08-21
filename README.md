@@ -19,7 +19,6 @@ dark dashboard to control it all.
 - [Tech stack](#tech-stack)
 - [Local setup](#local-setup)
 - [Getting an OpenAI API key](#getting-an-openai-api-key)
-- [Telegram alerts (optional but recommended)](#telegram-alerts-optional-but-recommended)
 - [Daily API cost guard](#daily-api-cost-guard)
 - [Automatic database backups](#automatic-database-backups)
 - [🌅 Daily Summary](#-daily-summary)
@@ -42,11 +41,8 @@ dark dashboard to control it all.
 - Blacklist contacts she should never answer, or flip on whitelist mode to *only* answer approved contacts.
 - Rate-limits replies (default: 10 per contact per hour, configurable 1–100 in Settings, or turn it off entirely
   for unlimited replies — the daily cost guard is still your safety net) and adds a human-like typing delay (3–8s).
-- Logs every message event (replied / skipped / rate-limited / blacklisted / error) to SQLite.
-- Sends **Telegram alerts** if she loses WhatsApp connection, crashes, or OpenAI starts failing repeatedly — and
-  tells you when she's back online.
 - Guards against a surprise bill with a **daily API cost limit** (default $0.50) — auto-replies pause for the rest
-  of the day if it's hit, with a dashboard banner and a Telegram alert.
+  of the day if it's hit, with a dashboard banner.
 - **Backs up her SQLite database automatically** every night, keeping the last 7 backups.
 - Sends you a **🌅 Daily Summary** each morning on your own WhatsApp chat — who messaged, what mattered, and
   whether she replied — in Bangla. Ask for one anytime with `/summary`.
@@ -85,9 +81,6 @@ PORT=3000
 TIMEZONE=Asia/Dhaka
 OWNER_NAME=Reduan
 
-# Optional — see "Telegram alerts" and "Automatic database backups" below
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
 BACKUP_TIME=03:00
 ```
 
@@ -122,29 +115,6 @@ Then browse **http://localhost:5173** while developing.
    inexpensive, but it isn't free.
 4. Paste the key into `.env` as `OPENAI_API_KEY`.
 
-## Telegram alerts (optional but recommended)
-
-Sheuli runs unattended on a VPS, so it's worth knowing the moment she loses her WhatsApp connection, crashes, or
-starts hitting OpenAI errors. She can alert you on Telegram — it's free and takes two minutes to set up.
-
-**1. Create a bot with @BotFather:**
-
-1. Open Telegram and search for **@BotFather** (the official bot for creating bots).
-2. Send `/newbot`, give it a name (e.g. "Sheuli Alerts") and a username (must end in `bot`, e.g. `sheuli_alerts_bot`).
-3. BotFather replies with a token like `123456789:AAExampleTokenValueHere` — copy it into `.env` as
-   `TELEGRAM_BOT_TOKEN`.
-
-**2. Find your chat ID:**
-
-1. Open a chat with your new bot in Telegram and send it any message (e.g. "hi") — you have to message it first,
-   bots can't message you until you do.
-2. Visit `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates` in a browser (replace `<YOUR_BOT_TOKEN>` with
-   the token from step 1).
-3. Look for `"chat":{"id":123456789,...}` in the JSON response — that number is your chat ID. Copy it into `.env`
-   as `TELEGRAM_CHAT_ID`.
-4. Restart Sheuli, then use the **Send test alert** button on the Settings page to confirm it works.
-
-Leave both variables empty to disable alerting entirely — every other feature keeps working normally.
 
 ## Daily API cost guard
 
@@ -153,7 +123,6 @@ cost (from actual token usage, gpt-4o-mini pricing) and keeps a running total fo
 (`TIMEZONE`). Once the daily limit is reached (default **$0.50**, configurable on the Settings page):
 
 - Sheuli stops making OpenAI calls for the rest of the day — incoming messages are logged as `skipped-cost-limit`.
-- You get a one-time Telegram alert.
 - The dashboard Overview page shows a warning banner until the limit resets at midnight.
 
 ## Automatic database backups
@@ -161,7 +130,7 @@ cost (from actual token usage, gpt-4o-mini pricing) and keeps a running total fo
 Once a day (default **03:00**, `TIMEZONE`, configurable via `BACKUP_TIME` in `.env`), Sheuli makes a safe hot
 backup of her SQLite database into `backups/sheuli-YYYY-MM-DD.db` using `better-sqlite3`'s online backup API (not
 a raw file copy, which could grab a half-written page). Only the last **7** backups are kept — older ones are
-deleted automatically. A failed backup sends a Telegram alert.
+deleted automatically.
 
 ## 🌅 Daily Summary
 
@@ -200,7 +169,6 @@ The first time Sheuli starts, she has no saved WhatsApp session yet, so she'll g
 - **Logs**: a searchable/filterable table of every message event and why it was replied to or
   skipped, plus a **Summaries** tab with every past daily summary.
 - **Daily Summary**: sent automatically each morning to your own WhatsApp chat, or on-demand with `/summary`.
-- **Telegram alerts**: pings you on disconnects, crashes, repeated OpenAI failures, and cost-limit hits.
 
 ## Project structure
 
@@ -210,7 +178,6 @@ sheuli/
 │   ├── index.js          # Express + Socket.IO bootstrap, starts the WhatsApp client
 │   ├── whatsapp.js        # whatsapp-web.js client, message handler, safety rules
 │   ├── ai.js              # OpenAI call + conversation/prompt building
-│   ├── alerts.js          # Telegram alert sender (FEATURE 1)
 │   ├── costGuard.js        # daily API cost tracking + limit enforcement (FEATURE 2)
 │   ├── backup.js           # SQLite hot backup + pruning (FEATURE 3)
 │   ├── summary.js          # daily summary collection + GPT generation + send (FEATURE 4)
@@ -395,9 +362,8 @@ In **Settings → Variables**, add:
 | `SESSION_SECRET` | a long random string |
 | `TIMEZONE` | `Asia/Dhaka` |
 | `OWNER_NAME` | `Reduan` |
-| `TELEGRAM_BOT_TOKEN` | *(optional — see [Telegram alerts](#telegram-alerts-optional-but-recommended))* |
-| `TELEGRAM_CHAT_ID` | *(optional)* |
 | `STORAGE_DIR` | `/app/storage` — **must match the Volume's mount path from step 3** |
+| `WA_WEB_VERSION` | *(optional — leave unset; only set to a specific version from [wa-version](https://github.com/wppconnect-team/wa-version/tree/main/html) if WhatsApp breaks compatibility)* |
 
 Do **not** set `PORT` — Railway injects it automatically, and `config.js` already reads `process.env.PORT`.
 
@@ -431,7 +397,20 @@ future redeploy — you won't need to re-scan unless you unlink the device or de
 - **QR code never appears / Puppeteer crashes on the VPS**: almost always a missing Chromium
   dependency — re-run the `apt install` command in step 2 and check `pm2 logs sheuli` for the
   specific missing `.so` file.
-- **Phone shows linked, but dashboard is stuck on "Waiting for QR scan" or `ready` times out**: Sheuli uses a remote HTML version cache (`WA_WEB_VERSION` / `pinnedWebVersion`) to ensure compatibility when WhatsApp silently updates its web frontend. If `ready` does not fire within 90 seconds after `authenticated`, Sheuli's watchdog automatically cleans stale lockfiles and re-initializes the client up to 3 times (and sends a Telegram alert if all 3 fail). If you experience repeated link hangs, open WhatsApp on your phone (`Settings → Linked Devices`), log out of old or duplicate "Google Chrome" sessions, and scan the fresh QR code on the dashboard.
+- **Phone shows linked, but dashboard is stuck on "Waiting for QR scan" or `ready` times out**: by default Sheuli
+  does not pin a WhatsApp Web version — whatsapp-web.js serves the live/current page, which is what stays
+  compatible as WhatsApp updates its web frontend. If `ready` does not fire within 90 seconds after
+  `authenticated`, Sheuli's watchdog automatically cleans stale lockfiles and re-initializes the client up to 3
+  times. If you experience repeated link hangs, open WhatsApp on your
+  phone (`Settings → Linked Devices`), log out of old or duplicate "Google Chrome" sessions, and scan the fresh
+  QR code on the dashboard.
+- **Pairing succeeds, then WhatsApp instantly logs the session back out (`reason: LOGOUT` within ~2 minutes of
+  scanning)**: this is WhatsApp rejecting the web-client version right after accepting the pairing — a
+  library/version incompatibility, not an account or device-limit issue. Sheuli detects this pattern, logs a
+  specific warning, and shows a matching hint on the dashboard's QR card. Try updating `whatsapp-web.js` to its
+  latest published version, or as a stopgap set `WA_WEB_VERSION` in `.env` to a known-good version from
+  [wa-version](https://github.com/wppconnect-team/wa-version/tree/main/html). This also counts toward the normal
+  loop guard (more than 2 LOGOUT-disconnects within 5 minutes stops auto-retry and waits for a manual QR scan).
 - **"WhatsApp disconnected" loops repeatedly**: usually means the linked session was invalidated
   from your phone (Settings → Linked Devices). Delete the `.wwebjs_auth/` folder (under `STORAGE_DIR` — the
   project root locally, the Volume on Railway/a VPS) and re-scan.
@@ -440,9 +419,6 @@ future redeploy — you won't need to re-scan unless you unlink the device or de
   silent, but won't retry automatically.
 - **Dashboard shows 401 / keeps logging you out**: make sure `SESSION_SECRET` in `.env` is set
   and stable across restarts (changing it invalidates existing sessions).
-- **Telegram test alert fails**: double-check `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`, and that
-  you've sent the bot at least one message first (bots can't message you until you message them). Restart Sheuli
-  after editing `.env`.
 - **Daily summary never arrives**: check `pm2 logs sheuli` around the scheduled time — if WhatsApp wasn't
   connected at that moment, Sheuli retries on the next minute's check rather than skipping the day. Make sure
   "Enable daily summary" is on in Settings.

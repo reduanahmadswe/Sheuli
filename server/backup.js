@@ -8,7 +8,6 @@ import path from 'node:path';
 import config from './config.js';
 import logger from './logger.js';
 import db from './db.js';
-import { sendAlert } from './alerts.js';
 import { getZonedDateKey } from './schedule.js';
 
 const BACKUP_FILENAME_RE = /^sheuli-\d{4}-\d{2}-\d{2}\.db$/;
@@ -50,11 +49,6 @@ export async function runBackup() {
     return destPath;
   } catch (err) {
     logger.error({ err: err?.message || err }, 'Database backup failed');
-    try {
-      await sendAlert(`🔴 Sheuli's daily database backup failed: ${err?.message || err}`);
-    } catch (alertErr) {
-      logger.warn({ err: alertErr?.message || alertErr }, 'Failed to send backup-failure alert');
-    }
     throw err;
   }
 }

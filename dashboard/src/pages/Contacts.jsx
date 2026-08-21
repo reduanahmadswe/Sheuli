@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api.js';
+import { getDisplayName, formatPhoneNumber } from '../lib/formatContact.js';
 
 function formatDate(iso) {
   if (!iso) return '—';
@@ -38,6 +39,7 @@ export default function Contacts() {
   const [contacts, setContacts] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
   const load = async (q = '') => {
     setLoading(true);
@@ -59,6 +61,18 @@ export default function Contacts() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
+  const syncContacts = async () => {
+    setSyncing(true);
+    try {
+      await api.post('/contacts/sync');
+      await load(search);
+    } catch {
+      // Ignore sync errors
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const updateContact = async (id, patch) => {
     const { data } = await api.patch(`/contacts/${id}`, patch);
     setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...data } : c)));
@@ -66,9 +80,18 @@ export default function Contacts() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-petal">Contacts</h1>
-        <p className="text-sm text-petal-dim">Everyone who has messaged you, and how Sheuli treats them.</p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-petal">Contacts</h1>
+          <p className="text-sm text-petal-dim">Everyone who has messaged you, and how Sheuli treats them.</p>
+        </div>
+        <button
+          onClick={syncContacts}
+          disabled={syncing}
+          className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-petal-dim transition-colors hover:border-sheuli/40 hover:text-sheuli-light disabled:opacity-50"
+        >
+          {syncing ? 'Syncing names…' : 'Sync WhatsApp Names'}
+        </button>
       </div>
 
       <input
@@ -86,34 +109,30 @@ export default function Contacts() {
               <th className="px-4 py-3">Messages</th>
               <th className="px-4 py-3">Last message</th>
               <th className="px-4 py-3">Blacklist</th>
-              <th className="px-4 py-3">Whitelist</th>
             </tr>
           </thead>
           <tbody>
-            {contacts.map((c) => (
-              <tr key={c.id} className="border-b border-white/5 last:border-none">
-                <td className="px-4 py-3">
-                  <p className="font-medium text-petal">{c.name || c.number}</p>
-                  <p className="text-xs text-petal-dim">{c.number}</p>
-                </td>
-                <td className="px-4 py-3 text-petal-dim">{c.message_count}</td>
-                <td className="px-4 py-3 text-petal-dim">{formatDate(c.last_message_at)}</td>
-                <td className="px-4 py-3">
-                  <Toggle
-                    checked={Boolean(c.blacklisted)}
-                    onChange={() => updateContact(c.id, { blacklisted: !c.blacklisted })}
-                    label="Blacklist"
-                  />
-                </td>
-                <td className="px-4 py-3">
-                  <Toggle
-                    checked={Boolean(c.whitelisted)}
-                    onChange={() => updateContact(c.id, { whitelisted: !c.whitelisted })}
-                    label="Whitelist"
-                  />
-                </td>
-              </tr>
-            ))}
+            {contacts.map((c) => {
+              const displayName = getDisplayName(c.name, c.number, c.id);
+              const displayNum = formatPhoneNumber(c.number || c.id);
+              return (
+                <tr key={c.id} className="border-b border-white/5 last:border-none">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-petal">{displayName}</p>
+                    {displayNum !== displayName && <p className="text-xs text-petal-dim">{displayNum}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-petal-dim">{c.message_count}</td>
+                  <td className="px-4 py-3 text-petal-dim">{formatDate(c.last_message_at)}</td>
+                  <td className="px-4 py-3">
+                    <Toggle
+                      checked={Boolean(c.blacklisted)}
+                      onChange={() => updateContact(c.id, { blacklisted: !c.blacklisted })}
+                      label="Blacklist"
+                    />
+                  </td>
+                </tr>
+              );
+            })}
             {!loading && contacts.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-petal-dim">

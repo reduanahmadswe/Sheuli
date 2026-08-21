@@ -11,6 +11,7 @@ router.get('/', (req, res) => {
     info: details.info,
     switchingAccount: details.switchingAccount,
     sessionRecoveryFailed: details.sessionRecoveryFailed,
+    pairingRejectedHint: details.pairingRejectedHint,
     loadingPercent: details.loadingPercent,
     loadingMessage: details.loadingMessage,
     stats: getTodayStats()

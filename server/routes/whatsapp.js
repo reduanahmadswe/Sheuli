@@ -19,7 +19,8 @@ router.get('/status', (req, res) => {
     loadingPercent: details.loadingPercent,
     loadingMessage: details.loadingMessage,
     switchingAccount: details.switchingAccount,
-    sessionRecoveryFailed: details.sessionRecoveryFailed
+    sessionRecoveryFailed: details.sessionRecoveryFailed,
+    pairingRejectedHint: details.pairingRejectedHint
   });
 });
 
@@ -44,7 +45,8 @@ router.post('/logout', async (req, res) => {
     loadingPercent: details.loadingPercent,
     loadingMessage: details.loadingMessage,
     switchingAccount: details.switchingAccount,
-    sessionRecoveryFailed: details.sessionRecoveryFailed
+    sessionRecoveryFailed: details.sessionRecoveryFailed,
+    pairingRejectedHint: details.pairingRejectedHint
   });
 });
 

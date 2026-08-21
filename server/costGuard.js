@@ -10,7 +10,6 @@ import config from './config.js';
 import logger from './logger.js';
 import { getSetting, getDailyCost, addDailyCost, markCostAlertSent } from './db.js';
 import { getZonedDateKey } from './schedule.js';
-import { sendAlert } from './alerts.js';
 
 export function computeCost(promptTokens, completionTokens) {
   const { inputPerMillion, outputPerMillion } = config.pricing.gpt4oMini;
@@ -31,9 +30,9 @@ export function isCostLimitReached() {
 }
 
 // Call this after every OpenAI call (reply generation, daily-summary
-// generation, etc.) with the real usage numbers from the API response. Fires a
-// one-time Telegram alert the moment the running total first crosses the
-// limit for the day (limit_alert_sent guards against repeat alerts).
+// generation, etc.) with the real usage numbers from the API response. Marks
+// limit_alert_sent the moment the running total first crosses the
+// limit for the day (limit_alert_sent guards against repeat flags).
 export async function recordApiCost(promptTokens, completionTokens) {
   const dateKey = getZonedDateKey(new Date(), config.timezone);
   const cost = computeCost(promptTokens, completionTokens);
@@ -42,13 +41,6 @@ export async function recordApiCost(promptTokens, completionTokens) {
   const limit = getCostLimit();
   if (row.estimatedCost >= limit && !row.limitAlertSent) {
     markCostAlertSent(dateKey);
-    try {
-      await sendAlert(
-        `🟠 Sheuli hit today's cost limit ($${limit.toFixed(2)}). Auto-reply paused until midnight.`
-      );
-    } catch (err) {
-      logger.warn({ err: err?.message || err }, 'Failed to send cost-limit alert (continuing)');
-    }
   }
 
   return row;

@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import config from '../config.js';
 import { getAllSettings, setSetting } from '../db.js';
-import { sendAlert, isAlertingEnabled } from '../alerts.js';
 
 const router = Router();
 
@@ -11,7 +10,6 @@ const router = Router();
 const EDITABLE_KEYS = [
   'autoReplyEnabled',
   'systemPrompt',
-  'whitelistMode',
   'model',
   'rateLimitPerHour',
   'costLimitDaily',
@@ -57,25 +55,5 @@ router.put('/', (req, res) => {
   res.json(settings);
 });
 
-// FEATURE 1: lets the dashboard verify the Telegram bot/chat ID are wired up
-// correctly without waiting for a real disconnect/crash to happen.
-router.post('/test-alert', async (req, res) => {
-  if (!isAlertingEnabled()) {
-    return res.status(400).json({
-      ok: false,
-      error: 'Telegram is not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env and restart Sheuli.'
-    });
-  }
-
-  const ok = await sendAlert(
-    `🧪 Test alert from the Sheuli dashboard (${config.ownerName}). If you can see this, Telegram alerts are working!`
-  );
-
-  if (!ok) {
-    return res.status(502).json({ ok: false, error: 'Telegram API did not accept the message — check the bot token and chat ID.' });
-  }
-
-  return res.json({ ok: true });
-});
 
 export default router;

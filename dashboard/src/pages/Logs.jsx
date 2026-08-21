@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api.js';
+import { getDisplayName } from '../lib/formatContact.js';
 
 const STATUS_OPTIONS = [
   'all',
@@ -175,7 +176,7 @@ export default function Logs() {
               {logs.map((log) => (
                 <tr key={log.id} className="border-b border-white/5 last:border-none">
                   <td className="whitespace-nowrap px-4 py-3 text-petal-dim">{formatDate(log.created_at)}</td>
-                  <td className="px-4 py-3 text-petal">{log.contact_name || log.contact_id}</td>
+                  <td className="px-4 py-3 text-petal">{getDisplayName(log.contact_name, null, log.contact_id)}</td>
                   <td className="px-4 py-3 text-petal-dim">{log.direction === 'in' ? 'Received' : 'Sent'}</td>
                   <td className="max-w-xs truncate px-4 py-3 text-petal-dim" title={log.body}>
                     {log.body || '—'}

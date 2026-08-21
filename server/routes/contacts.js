@@ -1,11 +1,20 @@
 import { Router } from 'express';
 import { listContacts, setContactFlag, getContact, clearContactMemory } from '../db.js';
+import { syncContactsFromWhatsApp } from '../whatsapp.js';
 
 const router = Router();
 
 router.get('/', (req, res) => {
   const { search = '' } = req.query;
   res.json(listContacts(search));
+});
+
+router.post('/sync', async (req, res) => {
+  const result = await syncContactsFromWhatsApp();
+  if (!result.ok) {
+    return res.status(400).json({ error: result.error || 'Failed to sync contacts' });
+  }
+  return res.json(result);
 });
 
 router.patch('/:id', (req, res) => {

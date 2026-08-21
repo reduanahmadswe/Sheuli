@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../lib/api.js';
 import getSocket from '../lib/socket.js';
 import Logo from '../components/Logo.jsx';
+import { getDisplayName, formatPhoneNumber } from '../lib/formatContact.js';
 
 const STATUS_TAG = {
   skipped: 'skipped',
@@ -52,6 +53,7 @@ function dayLabel(iso) {
 }
 
 function ChatListItem({ chat, active, onClick }) {
+  const displayName = getDisplayName(chat.name, chat.number, chat.contactId);
   const preview = chat.lastMessageBody
     ? chat.lastMessageDirection === 'out'
       ? `Sheuli: ${chat.lastMessageBody}`
@@ -68,11 +70,11 @@ function ChatListItem({ chat, active, onClick }) {
       }`}
     >
       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-night-300 text-sm font-semibold text-sheuli-light ring-1 ring-white/10">
-        {initials(chat.name || chat.number)}
+        {initials(displayName)}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <p className="truncate text-sm font-medium text-petal">{chat.name || chat.number}</p>
+          <p className="truncate text-sm font-medium text-petal">{displayName}</p>
           <span className="shrink-0 text-[11px] text-petal-dim">{formatTime(chat.lastMessageAt)}</span>
         </div>
         <div className="flex items-center justify-between gap-2">
@@ -294,13 +296,15 @@ export default function LiveMessages() {
                   ←
                 </button>
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-night-300 text-xs font-semibold text-sheuli-light ring-1 ring-white/10">
-                  {initials(selectedChat.name || selectedChat.number)}
+                  {initials(getDisplayName(selectedChat.name, selectedChat.number, selectedChat.contactId))}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-petal">
-                    {selectedChat.name || selectedChat.number}
+                    {getDisplayName(selectedChat.name, selectedChat.number, selectedChat.contactId)}
                   </p>
-                  <p className="truncate text-xs text-petal-dim">{selectedChat.number}</p>
+                  {formatPhoneNumber(selectedChat.number || selectedChat.contactId) !== getDisplayName(selectedChat.name, selectedChat.number, selectedChat.contactId) && (
+                    <p className="truncate text-xs text-petal-dim">{formatPhoneNumber(selectedChat.number || selectedChat.contactId)}</p>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <button
@@ -312,16 +316,6 @@ export default function LiveMessages() {
                     }`}
                   >
                     {selectedChat.blacklisted ? 'Blacklisted' : 'Blacklist'}
-                  </button>
-                  <button
-                    onClick={() => toggleFlag('whitelisted')}
-                    className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${
-                      selectedChat.whitelisted
-                        ? 'border-sheuli/40 bg-sheuli/15 text-sheuli-light'
-                        : 'border-white/10 text-petal-dim hover:text-petal'
-                    }`}
-                  >
-                    {selectedChat.whitelisted ? 'Whitelisted' : 'Whitelist'}
                   </button>
                   <button
                     onClick={clearMemory}

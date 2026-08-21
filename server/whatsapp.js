@@ -8,11 +8,11 @@ import logger from './logger.js';
 import { generateReply } from './ai.js';
 import { classifyChatId } from './chatFilter.js';
 import { isSheuliActive } from './schedule.js';
-import { sendAlert } from './alerts.js';
 import { isCostLimitReached, recordApiCost } from './costGuard.js';
 import { runDailySummary } from './summary.js';
 import {
   upsertContact,
+  isRawId,
   touchContact,
   getContact,
   logMessage,
@@ -51,12 +51,20 @@ const LOGOUT_LOOP_MAX = 2;
 let logoutDisconnectTimestamps = [];
 // True once the loop guard has tripped: further LOGOUT-reason disconnects are
 // ignored (no more auto destroy/reinit cycling) until either a manual
-// dashboard logout or a successful authentication clears it.
+// dashboard logout or a connection that actually reaches 'ready' clears it.
 let sessionRecoveryFailed = false;
 
 function isLogoutReason(reason) {
   return LOGOUT_REASONS.has(reason);
 }
+
+// FIX 3 (v12): "paired then instantly unpaired" detection. If WhatsApp
+// LOGOUT-disconnects us within this window of a successful QR pairing, that's
+// the signature of a web-version/library incompatibility, not a normal
+// session invalidation — surfaced as a specific log line and a dashboard hint.
+const PAIRING_REJECT_WINDOW_MS = 2 * 60 * 1000;
+let lastAuthenticatedAt = null;
+let pairingRejectedHint = false;
 
 // FIX 2.4: lets logoutWhatsApp() await the fresh client actually reaching the
 // 'qr' state instead of just initWhatsApp() resolving (which happens earlier).
@@ -116,7 +124,11 @@ export function getConnectionDetails() {
     // FIX 4.2: tells the dashboard the current/upcoming QR is a loop-guard
     // recovery attempt, so it can show "session couldn't be restored" instead
     // of the normal "scan this code" copy.
-    sessionRecoveryFailed
+    sessionRecoveryFailed,
+    // FIX 3 (v12): tells the dashboard the last pairing attempt was accepted
+    // and then instantly rejected — likely a version incompatibility, not a
+    // normal disconnect — so the QR card can show a matching hint.
+    pairingRejectedHint
   };
 }
 
@@ -283,7 +295,7 @@ async function handleIncomingMessage(message) {
   } catch (err) {
     logger.warn({ err: err?.message || err }, 'Could not fetch chat object');
   }
-  if (chat?.isGroup) {
+  if (chat?.isGroup || chat?.isCommunity || chat?.isChannel || chat?.isReadOnly) {
     logQuickSkip(chatId, 'skipped-group');
     return;
   }
@@ -299,16 +311,19 @@ async function handleIncomingMessage(message) {
     return;
   }
 
-  let contactName = chatId;
-  let contactNumber = chatId.replace('@c.us', '').replace('@lid', '');
+  let contactName = null;
+  let contactNumber = chatId.replace('@c.us', '').replace('@lid', '').replace('@g.us', '');
   let candidateJids = [];
   try {
     const waContact = await message.getContact();
-    contactName = waContact?.pushname || waContact?.name || contactNumber;
+    const rawName = waContact?.name || waContact?.pushname || waContact?.shortName || waContact?.verifiedName || chat?.name;
+    if (rawName && !isRawId(rawName)) {
+      contactName = rawName.trim();
+    }
     if (waContact?.id?._serialized && waContact.id._serialized.endsWith('@c.us')) {
       candidateJids.push(waContact.id._serialized);
       contactNumber = waContact.id._serialized.replace('@c.us', '');
-    } else if (waContact?.number && waContact.number !== chatId.replace('@lid', '')) {
+    } else if (waContact?.number && !waContact.number.includes('@')) {
       candidateJids.push(`${waContact.number}@c.us`);
       contactNumber = waContact.number;
     }
@@ -374,10 +389,6 @@ async function handleIncomingMessage(message) {
     return;
   }
 
-  if (settings.whitelistMode && !contact?.whitelisted) {
-    recordSkip('skipped');
-    return;
-  }
 
   // ── FEATURE 2: schedule enforcement ─────────────────────────────────────
   // Re-evaluated fresh on every incoming message (pure function, no cached
@@ -798,11 +809,7 @@ function startAuthenticatedWatchdog() {
     );
 
     if (authRetryCount === 3) {
-      sendAlert(
-        '⚠️ Sheuli authenticated but never became ready after 3 attempts — may need attention'
-      ).catch((err) => {
-        logger.warn({ err: err?.message || err }, 'Failed to send watchdog Telegram alert');
-      });
+      logger.warn('Sheuli authenticated but never became ready after 3 attempts — may need attention');
     }
 
     try {
@@ -879,10 +886,16 @@ function attachListeners(clientInstance) {
       hasLoggedAuthenticated = true;
       logger.info('WhatsApp authentication successful');
     }
-    // FIX 2.2: a successful scan proves the session is good again — clear the
-    // loop guard so a future genuine logout gets the normal 2-strike grace.
-    logoutDisconnectTimestamps = [];
-    sessionRecoveryFailed = false;
+    // FIX 3 (v12): remember when this pairing completed so a LOGOUT disconnect
+    // shortly after can be recognized as "paired then instantly rejected"
+    // rather than a generic disconnect. NOTE: unlike v11, we deliberately do
+    // NOT clear the loop-guard counters here — 'authenticated' firing does not
+    // prove the session is actually accepted (that's the whole v12 bug: it
+    // can authenticate and get LOGOUT'd seconds later on every attempt, which
+    // would otherwise keep zeroing the counter before it could ever trip).
+    // The counters only get cleared on a confirmed-stable 'ready' below.
+    lastAuthenticatedAt = Date.now();
+    pairingRejectedHint = false;
     startAuthenticatedWatchdog();
   });
 
@@ -893,6 +906,10 @@ function attachListeners(clientInstance) {
     }
     stopAuthenticatedWatchdog();
     authRetryCount = 0;
+    // FIX 2.2: a connection that actually reaches 'ready' proves the session
+    // is genuinely good — safe to clear the LOGOUT loop guard here.
+    logoutDisconnectTimestamps = [];
+    sessionRecoveryFailed = false;
     emitStatus('ready');
     if (!hasLoggedReady) {
       hasLoggedReady = true;
@@ -907,10 +924,10 @@ function attachListeners(clientInstance) {
 
     if (hadConnectionIssue) {
       hadConnectionIssue = false;
-      sendAlert('🟢 Sheuli is back online.').catch((err) => {
-        logger.warn({ err: err?.message || err }, 'Failed to send recovery alert');
-      });
     }
+
+    // Trigger background contact & chat name sync
+    syncContactsFromWhatsApp().catch(() => {});
   });
 
   clientInstance.on('auth_failure', async (msg) => {
@@ -926,9 +943,6 @@ function attachListeners(clientInstance) {
     emitStatus('auth_failure');
     logger.error({ msg }, 'WhatsApp authentication failed — cleaning up session...');
     hadConnectionIssue = true;
-    sendAlert(`🔴 Sheuli lost WhatsApp connection: ${msg}. Scan QR again from the dashboard.`).catch((err) => {
-      logger.warn({ err: err?.message || err }, 'Failed to send auth-failure alert');
-    });
     await resetClient('auth_failure');
   });
 
@@ -952,6 +966,19 @@ function attachListeners(clientInstance) {
     // what caused the destroy/reinit/disconnect loop. Handle it once, wipe
     // the session first, and guard against it happening over and over.
     if (isLogoutReason(reason)) {
+      // FIX 3 (v12): pairing was accepted (authenticated) and then rejected
+      // within 2 minutes — the signature of a web-version/library
+      // incompatibility rather than a normal session invalidation. Logged and
+      // surfaced regardless of loop-guard state so it's self-explanatory the
+      // very first time it happens, not just once the guard trips.
+      if (lastAuthenticatedAt && Date.now() - lastAuthenticatedAt < PAIRING_REJECT_WINDOW_MS) {
+        pairingRejectedHint = true;
+        logger.warn(
+          { reason, msSincePairing: Date.now() - lastAuthenticatedAt },
+          'Pairing rejected by WhatsApp right after linking — likely web-version/library incompatibility. Try updating whatsapp-web.js or adjusting WA_WEB_VERSION.'
+        );
+      }
+
       if (sessionRecoveryFailed) {
         logger.warn(
           { reason },
@@ -973,9 +1000,6 @@ function attachListeners(clientInstance) {
         logoutDisconnectTimestamps = [];
         sessionRecoveryFailed = true;
         emitStatus('needs_qr');
-        sendAlert("⚠️ Sheuli couldn't restore the session — please scan the QR from the dashboard").catch((err) => {
-          logger.warn({ err: err?.message || err }, 'Failed to send loop-guard alert');
-        });
         // One last, verified-clean attempt so the user actually has a QR to
         // scan — but the `sessionRecoveryFailed` gate above stops any further
         // ones if this also somehow gets LOGOUT-disconnected again.
@@ -984,9 +1008,6 @@ function attachListeners(clientInstance) {
       }
 
       logger.warn({ reason }, 'WhatsApp session was logged out/unpaired — wiping session and reinitializing for a fresh QR...');
-      sendAlert(`🔴 Sheuli lost WhatsApp connection: ${reason}. Scan QR again from the dashboard.`).catch((err) => {
-        logger.warn({ err: err?.message || err }, 'Failed to send disconnect alert');
-      });
       await resetClient(reason);
       return;
     }
@@ -994,9 +1015,6 @@ function attachListeners(clientInstance) {
     // FIX 2.3: other disconnect reasons (network blips etc.) keep the
     // existing reconnect-with-backoff behavior, unchanged.
     logger.warn({ reason }, 'WhatsApp disconnected — cleaning up and attempting clean reconnect...');
-    sendAlert(`🔴 Sheuli lost WhatsApp connection: ${reason}. Scan QR again from the dashboard.`).catch((err) => {
-      logger.warn({ err: err?.message || err }, 'Failed to send disconnect alert');
-    });
     await resetClient(reason);
   });
 
@@ -1075,10 +1093,13 @@ export async function logoutWhatsApp({ clearHistory = false } = {}) {
     return { ok: false, error: 'Account switch already in progress' };
   }
   switchingAccount = true;
-  // FIX 2.2: a manual dashboard logout is an explicit fresh start — clear any
-  // loop-guard state left over from a prior automatic recovery attempt.
+  // FIX 2.2/3: a manual dashboard logout is an explicit fresh start — clear
+  // any loop-guard and pairing-rejection state left over from a prior
+  // automatic recovery attempt.
   logoutDisconnectTimestamps = [];
   sessionRecoveryFailed = false;
+  lastAuthenticatedAt = null;
+  pairingRejectedHint = false;
   emitStatus('logging_out');
 
   try {
@@ -1146,9 +1167,6 @@ export async function logoutWhatsApp({ clearHistory = false } = {}) {
     // FIX 3.3: exactly one alert for the intentional dashboard logout. The
     // 'disconnected' events that follow (old client tearing down, new client
     // booting) are all suppressed by the `switchingAccount` check below.
-    sendAlert('🔄 WhatsApp logged out from the dashboard — waiting for a new QR scan.').catch((err) => {
-      logger.warn({ err: err?.message || err }, 'Failed to send logout Telegram alert');
-    });
 
     // FIX 2.4: subscribe for the fresh client's 'qr' event BEFORE starting
     // init, so we can't miss it — then keep `switchingAccount` true for the
@@ -1176,6 +1194,55 @@ export async function logoutWhatsApp({ clearHistory = false } = {}) {
   }
 }
 
+export async function syncContactsFromWhatsApp() {
+  if (!client || connectionStatus !== 'ready') {
+    logger.warn('WhatsApp client is not ready for contact sync');
+    return { ok: false, count: 0 };
+  }
+
+  try {
+    logger.info('Syncing contacts & chat names from WhatsApp...');
+    const chats = await client.getChats();
+    let count = 0;
+
+    for (const chat of chats) {
+      const chatId = chat.id._serialized;
+      const isGroup = Boolean(chat.isGroup || chatId.endsWith('@g.us') || chatId.endsWith('@newsletter'));
+
+      let name = chat.name || null;
+      let number = chatId.replace('@c.us', '').replace('@lid', '').replace('@g.us', '');
+
+      try {
+        const waContact = await chat.getContact();
+        if (waContact) {
+          const rawName = waContact.name || waContact.pushname || waContact.shortName || waContact.verifiedName || name;
+          if (rawName && !isRawId(rawName)) {
+            name = rawName.trim();
+          }
+          if (waContact.number && !waContact.number.includes('@')) {
+            number = waContact.number;
+          } else if (waContact.id?._serialized && waContact.id._serialized.endsWith('@c.us')) {
+            number = waContact.id._serialized.replace('@c.us', '');
+          }
+        }
+      } catch {}
+
+      if (name && isRawId(name)) {
+        name = null;
+      }
+
+      upsertContact({ id: chatId, name, number, isGroup });
+      count += 1;
+    }
+
+    logger.info({ count }, 'Finished syncing contacts & chat names from WhatsApp');
+    return { ok: true, count };
+  } catch (err) {
+    logger.error({ err: err?.message || err }, 'Error syncing contacts from WhatsApp');
+    return { ok: false, error: err?.message || 'Sync failed' };
+  }
+}
+
 export default {
   initWhatsApp,
   getConnectionStatus,
@@ -1186,5 +1253,6 @@ export default {
   sendSelfMessage,
   isSwitchingAccount,
   getClientInfo,
-  logoutWhatsApp
+  logoutWhatsApp,
+  syncContactsFromWhatsApp
 };

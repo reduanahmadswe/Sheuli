@@ -64,6 +64,7 @@ export default function Overview() {
   const [qr, setQr] = useState(null);
   const [switchingAccount, setSwitchingAccount] = useState(false);
   const [sessionRecoveryFailed, setSessionRecoveryFailed] = useState(false);
+  const [pairingRejectedHint, setPairingRejectedHint] = useState(false);
   const [stats, setStats] = useState({
     messagesReceived: 0,
     repliesSent: 0,
@@ -84,6 +85,7 @@ export default function Overview() {
       if (data.info !== undefined) setInfo(data.info);
       setSwitchingAccount(Boolean(data.switchingAccount));
       setSessionRecoveryFailed(Boolean(data.sessionRecoveryFailed));
+      setPairingRejectedHint(Boolean(data.pairingRejectedHint));
       setStats(data.stats);
       if (
         data.connection === 'authenticated' ||
@@ -123,6 +125,7 @@ export default function Overview() {
         if (details.info !== undefined) setInfo(details.info);
         setSwitchingAccount(Boolean(details.switchingAccount));
         setSessionRecoveryFailed(Boolean(details.sessionRecoveryFailed));
+        setPairingRejectedHint(Boolean(details.pairingRejectedHint));
       }
       if (
         st === 'authenticated' ||
@@ -233,6 +236,13 @@ export default function Overview() {
               {sessionRecoveryFailed && (
                 <p className="text-center text-sm font-medium text-red-300">
                   Session couldn't be restored — scan the QR below to reconnect.
+                </p>
+              )}
+              {pairingRejectedHint && (
+                <p className="max-w-xs text-center text-xs font-medium text-yellow-300">
+                  ⚠️ Last pairing was accepted, then instantly rejected by WhatsApp — likely a web-version/library
+                  incompatibility, not an account issue. Try updating whatsapp-web.js, or set WA_WEB_VERSION as a
+                  stopgap.
                 </p>
               )}
               <div className="rounded-xl bg-white p-3 shadow-glow">

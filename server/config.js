@@ -29,10 +29,17 @@ export const config = {
   dbPath: path.join(storageDir, 'data', 'sheuli.db'),
   sessionAuthDir: path.join(storageDir, '.wwebjs_auth'),
 
-  // FIX 1: Pinned WhatsApp Web HTML version string and remote wppconnect cache pattern.
-  // When updating whatsapp-web.js or adapting to WhatsApp Web releases, check
-  // https://github.com/wppconnect-team/wa-version/tree/main/html for the latest stable version string.
-  pinnedWebVersion: process.env.WA_WEB_VERSION || '2.3000.1040300918-alpha',
+  // FIX 2 (v12): only pin a specific WhatsApp Web version if WA_WEB_VERSION is
+  // explicitly set. A hardcoded fallback here previously went stale — WhatsApp
+  // stopped accepting that version, so pairing would succeed and then the
+  // server would immediately unpair us (reason: LOGOUT). Leaving this unset
+  // lets whatsapp-web.js fall through to its own default behavior, which
+  // serves the live/current WhatsApp Web page instead of a frozen one. Only
+  // set WA_WEB_VERSION again if a future WhatsApp update breaks compatibility
+  // and a specific known-good version (see
+  // https://github.com/wppconnect-team/wa-version/tree/main/html) is needed
+  // as a stopgap.
+  pinnedWebVersion: process.env.WA_WEB_VERSION || null,
 
   port: Number(process.env.PORT) || 3000,
   ownerName: process.env.OWNER_NAME || 'Reduan',
@@ -44,11 +51,6 @@ export const config = {
 
   isProduction: process.env.NODE_ENV === 'production',
 
-  // FEATURE 1: Telegram alert channel. If either is empty, alerts.js silently no-ops.
-  telegram: {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
-    chatId: process.env.TELEGRAM_CHAT_ID || ''
-  },
 
   // FEATURE 3: automatic SQLite backups.
   backup: {
@@ -69,7 +71,6 @@ export const config = {
     temperature: 0.7,
     rateLimitPerHour: 10, // 0 = unlimited (rate limiting off) — see routes/settings.js validation
     memoryLength: 10,
-    whitelistMode: false,
     autoReplyEnabled: false,
     mode: 'manual', // 'manual' | 'schedule'
     scheduleStart: '23:00',

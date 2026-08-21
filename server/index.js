@@ -13,7 +13,6 @@ import { requireAuth, COOKIE_NAME } from './middleware/auth.js';
 import { initWhatsApp, getConnectionStatus, getLastQr, destroyClient, getClientInfo, getConnectionDetails } from './whatsapp.js';
 import { getAllSettings, closeDb } from './db.js';
 import { getScheduleStatus } from './schedule.js';
-import { sendAlert } from './alerts.js';
 import { startBackgroundJobs } from './jobs.js';
 import { setSocketIo } from './summary.js';
 
@@ -148,30 +147,17 @@ server.listen(config.port, '0.0.0.0', () => {
   });
 });
 
-// Bounds how long we'll wait for the crash alert before exiting anyway — a
-// hung Telegram request must never keep the process from restarting under PM2.
-const CRASH_ALERT_TIMEOUT_MS = 5000;
-
-function alertWithTimeout(message) {
-  return Promise.race([
-    sendAlert(message).catch(() => {}),
-    new Promise((resolve) => setTimeout(resolve, CRASH_ALERT_TIMEOUT_MS))
-  ]);
-}
-
-process.on('unhandledRejection', async (reason) => {
+process.on('unhandledRejection', (reason) => {
   if (reason && typeof reason === 'object' && Object.keys(reason).length === 0) {
     return;
   }
   const message = reason instanceof Error ? reason.message : String(reason);
-  logger.error({ reason: message }, 'Unhandled promise rejection — alerting and exiting (PM2 will restart)');
-  await alertWithTimeout(`🔴 Sheuli crashed (unhandled rejection): ${message}`);
+  logger.error({ reason: message }, 'Unhandled promise rejection — exiting (PM2 will restart)');
   process.exit(1);
 });
 
-process.on('uncaughtException', async (err) => {
-  logger.error({ err: err.message, stack: err.stack }, 'Uncaught exception — alerting and exiting (PM2 will restart)');
-  await alertWithTimeout(`🔴 Sheuli crashed (uncaught exception): ${err.message}`);
+process.on('uncaughtException', (err) => {
+  logger.error({ err: err.message, stack: err.stack }, 'Uncaught exception — exiting (PM2 will restart)');
   process.exit(1);
 });
 

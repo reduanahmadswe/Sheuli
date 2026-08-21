@@ -119,9 +119,6 @@ export default function Settings() {
   const [scheduleSavedAt, setScheduleSavedAt] = useState(null);
   const [scheduleError, setScheduleError] = useState('');
 
-  const [testingAlert, setTestingAlert] = useState(false);
-  const [alertResult, setAlertResult] = useState(null);
-
   const [rateLimitDraft, setRateLimitDraft] = useState('10');
   const [rateLimitError, setRateLimitError] = useState('');
 
@@ -134,6 +131,7 @@ export default function Settings() {
   const [waQr, setWaQr] = useState(null);
   const [switchingAccount, setSwitchingAccount] = useState(false);
   const [sessionRecoveryFailed, setSessionRecoveryFailed] = useState(false);
+  const [pairingRejectedHint, setPairingRejectedHint] = useState(false);
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [clearHistoryCheckbox, setClearHistoryCheckbox] = useState(false);
@@ -153,6 +151,7 @@ export default function Settings() {
         }
         setSwitchingAccount(Boolean(data.whatsapp.switchingAccount));
         setSessionRecoveryFailed(Boolean(data.whatsapp.sessionRecoveryFailed));
+        setPairingRejectedHint(Boolean(data.whatsapp.pairingRejectedHint));
       }
     } catch {
       // Leave the last-known values displayed rather than clearing them.
@@ -170,6 +169,7 @@ export default function Settings() {
       setWaInfo(data.info);
       setSwitchingAccount(Boolean(data.switchingAccount));
       setSessionRecoveryFailed(Boolean(data.sessionRecoveryFailed));
+      setPairingRejectedHint(Boolean(data.pairingRejectedHint));
       if (
         data.connection === 'authenticated' ||
         data.connection === 'loading' ||
@@ -197,6 +197,7 @@ export default function Settings() {
         // the same premature-clear race client-side.
         setSwitchingAccount(Boolean(details.switchingAccount));
         setSessionRecoveryFailed(Boolean(details.sessionRecoveryFailed));
+        setPairingRejectedHint(Boolean(details.pairingRejectedHint));
       }
       if (
         st === 'authenticated' ||
@@ -306,19 +307,6 @@ export default function Settings() {
     save({ rateLimitPerHour: value });
   };
 
-  const sendTestAlert = async () => {
-    setTestingAlert(true);
-    setAlertResult(null);
-    try {
-      await api.post('/settings/test-alert');
-      setAlertResult({ ok: true, message: 'Test alert sent — check your Telegram.' });
-    } catch (err) {
-      setAlertResult({ ok: false, message: err.response?.data?.error || 'Failed to send test alert.' });
-    } finally {
-      setTestingAlert(false);
-    }
-  };
-
   const toggleDay = (day) => {
     const current = schedule.scheduleDays || [];
     const next = current.includes(day) ? current.filter((d) => d !== day) : [...current, day];
@@ -383,6 +371,13 @@ export default function Settings() {
             ) : (
               <p className="text-sm font-medium text-petal">Scan to link a new WhatsApp account:</p>
             )}
+            {pairingRejectedHint && (
+              <p className="max-w-xs text-center text-xs font-medium text-yellow-300">
+                ⚠️ Last pairing was accepted, then instantly rejected by WhatsApp — likely a web-version/library
+                incompatibility, not an account issue. Try updating whatsapp-web.js, or set WA_WEB_VERSION as a
+                stopgap.
+              </p>
+            )}
             <div className="rounded-xl bg-white p-3 shadow-glow">
               <img src={waQr} alt="Scan this QR code with WhatsApp" className="h-48 w-48" />
             </div>
@@ -425,11 +420,6 @@ export default function Settings() {
               label="OPENAI_API_KEY"
               value={diagnostics.env.openaiApiKeyPresent ? 'present' : 'MISSING'}
               tone={diagnostics.env.openaiApiKeyPresent ? 'good' : 'bad'}
-            />
-            <DiagRow
-              label="Telegram alerts"
-              value={diagnostics.env.telegramConfigured ? 'configured' : 'not configured'}
-              tone={diagnostics.env.telegramConfigured ? 'good' : undefined}
             />
             <DiagRow label="Last incoming message" value={formatDiagnosticTime(diagnostics.lastIncomingAt)} />
             <DiagRow label="Last reply sent" value={formatDiagnosticTime(diagnostics.lastReplyAt)} />
@@ -561,12 +551,6 @@ export default function Settings() {
         </div>
       </Section>
 
-      <Section title="Whitelist mode" description="When on, Sheuli only replies to whitelisted contacts.">
-        <Toggle
-          checked={Boolean(settings.whitelistMode)}
-          onChange={() => save({ whitelistMode: !settings.whitelistMode })}
-        />
-      </Section>
 
       <Section title="Rate limit" description="Caps how many replies Sheuli sends to the same contact per hour.">
         <div className="flex flex-col gap-4">
@@ -691,28 +675,6 @@ export default function Settings() {
         </div>
       </Section>
 
-      <Section
-        title="Telegram alerts"
-        description="Get pinged on Telegram when Sheuli disconnects, crashes, or hits her daily cost limit."
-      >
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={sendTestAlert}
-            disabled={testingAlert}
-            className="w-fit rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-petal-dim transition-colors hover:border-sheuli/40 hover:text-sheuli-light disabled:opacity-50"
-          >
-            {testingAlert ? 'Sending…' : 'Send test alert'}
-          </button>
-          {alertResult && (
-            <p className={`text-sm ${alertResult.ok ? 'text-emerald-300' : 'text-red-400'}`}>{alertResult.message}</p>
-          )}
-          <p className="text-xs text-petal-dim">
-            Configure <span className="font-mono text-petal">TELEGRAM_BOT_TOKEN</span> and{' '}
-            <span className="font-mono text-petal">TELEGRAM_CHAT_ID</span> in <span className="font-mono text-petal">.env</span>{' '}
-            on the server, then restart Sheuli — see the README for how to create a bot with @BotFather.
-          </p>
-        </div>
-      </Section>
 
       {savedAt && <p className="text-xs text-petal-dim">Saved at {savedAt.toLocaleTimeString()}</p>}
 
