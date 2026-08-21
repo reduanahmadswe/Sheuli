@@ -538,16 +538,6 @@ async function getBrowserExecutablePath() {
     return process.env.CHROME_PATH;
   }
 
-  try {
-    const puppeteerModule = await import('puppeteer');
-    const defaultPath = (puppeteerModule.default || puppeteerModule).executablePath?.();
-    if (defaultPath && fs.existsSync(defaultPath)) {
-      return defaultPath;
-    }
-  } catch {
-    // Ignore and fallback to system candidates
-  }
-
   const platform = os.platform();
   const candidates = [];
 
@@ -568,10 +558,10 @@ async function getBrowserExecutablePath() {
     );
   } else {
     candidates.push(
-      '/usr/bin/google-chrome',
-      '/usr/bin/google-chrome-stable',
       '/usr/bin/chromium',
       '/usr/bin/chromium-browser',
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
       '/usr/bin/msedge',
       '/snap/bin/chromium'
     );
@@ -582,6 +572,16 @@ async function getBrowserExecutablePath() {
       logger.info({ executablePath: candidate }, 'Using fallback system browser for WhatsApp client');
       return candidate;
     }
+  }
+
+  try {
+    const puppeteerModule = await import('puppeteer');
+    const defaultPath = (puppeteerModule.default || puppeteerModule).executablePath?.();
+    if (defaultPath && fs.existsSync(defaultPath)) {
+      return defaultPath;
+    }
+  } catch {
+    // Ignore
   }
 
   return undefined;
@@ -772,7 +772,17 @@ async function doInitWhatsApp(io) {
 
   attachListeners(client);
 
-  await client.initialize();
+  try {
+    await client.initialize();
+  } catch (err) {
+    logger.error({ err: err?.message || err }, 'WhatsApp client.initialize() failed');
+    if (startupWatchdog) {
+      clearTimeout(startupWatchdog);
+      startupWatchdog = null;
+    }
+    emitStatus('disconnected');
+    setTimeout(() => resetClient('init_failed'), 5000);
+  }
   return client;
 }
 
