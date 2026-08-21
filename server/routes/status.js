@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getTodayStats } from '../db.js';
-import { getConnectionStatus, getClientInfo, isSwitchingAccount, getConnectionDetails } from '../whatsapp.js';
+import { getConnectionStatus, getClientInfo, isSwitchingAccount, getConnectionDetails, getLastQr } from '../whatsapp.js';
 
 const router = Router();
 
@@ -14,6 +14,7 @@ router.get('/', (req, res) => {
     pairingRejectedHint: details.pairingRejectedHint,
     loadingPercent: details.loadingPercent,
     loadingMessage: details.loadingMessage,
+    qr: getLastQr(),
     stats: getTodayStats()
   });
 });

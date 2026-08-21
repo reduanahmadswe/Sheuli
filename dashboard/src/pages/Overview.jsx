@@ -87,6 +87,9 @@ export default function Overview() {
       setSessionRecoveryFailed(Boolean(data.sessionRecoveryFailed));
       setPairingRejectedHint(Boolean(data.pairingRejectedHint));
       setStats(data.stats);
+      if (data.qr) {
+        setQr(data.qr);
+      }
       if (
         data.connection === 'authenticated' ||
         data.connection === 'loading' ||
