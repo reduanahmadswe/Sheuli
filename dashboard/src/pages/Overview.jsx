@@ -74,6 +74,7 @@ export default function Overview() {
     costLimitReached: false
   });
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
+  const [activeMode, setActiveMode] = useState('normal');
   const [toggling, setToggling] = useState(false);
   const [scheduleStatus, setScheduleStatus] = useState({ mode: 'manual', active: false });
 
@@ -107,6 +108,16 @@ export default function Overview() {
   const fetchSettings = async () => {
     const { data } = await api.get('/settings');
     setAutoReplyEnabled(Boolean(data.autoReplyEnabled));
+    if (data.activeMode) setActiveMode(data.activeMode);
+  };
+
+  const changeMode = async (modeKey) => {
+    setActiveMode(modeKey);
+    try {
+      await api.put('/settings', { activeMode: modeKey });
+    } catch {
+      // fallback
+    }
   };
 
   const fetchSchedule = async () => {
@@ -225,6 +236,66 @@ export default function Overview() {
           </button>
         </div>
       )}
+
+      {/* Personal & Student Mode Selector Bar */}
+      <div className="rounded-2xl border border-white/10 bg-night-400/50 p-4 backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <p className="text-xs uppercase tracking-wide text-petal-dim">Personal Active Mode (34 Personal & Life Modes)</p>
+          <span className="text-xs text-sheuli-light font-medium bg-sheuli/10 px-2.5 py-0.5 rounded-full">
+            Active: {activeMode.toUpperCase()}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+          {[
+            { id: 'normal', label: 'Normal 🌸' },
+            { id: 'sleep', label: 'Sleep 🌙' },
+            { id: 'home', label: 'At Home 🏡' },
+            { id: 'commute', label: 'Commute 🚌' },
+            { id: 'shopping', label: 'Market 🛒' },
+            { id: 'adda', label: 'Adda ☕' },
+            { id: 'movie', label: 'Movie 🎬' },
+            { id: 'barber', label: 'Salon 💈' },
+            { id: 'errands', label: 'Errands 🏃' },
+            { id: 'lowbat', label: 'Low Bat 🪫' },
+            { id: 'medical', label: 'Medical 🏥' },
+            { id: 'rainy', label: 'Rainy/Jam 🌧️' },
+            { id: 'party', label: 'Party 🎉' },
+            { id: 'teabreak', label: 'Tea Break 🫖' },
+            { id: 'chores', label: 'Chores 🧹' },
+            { id: 'oncall', label: 'On Call 📞' },
+            { id: 'charging', label: 'Charging 🔌' },
+            { id: 'reading', label: 'Reading 📖' },
+            { id: 'outdoors', label: 'Outdoors 🏕️' },
+            { id: 'thinking', label: 'Thinking 🧠' },
+            { id: 'class', label: 'Class 🏫' },
+            { id: 'study', label: 'Study 📚' },
+            { id: 'exam', label: 'Exam 📝' },
+            { id: 'lab', label: 'Lab 🔬' },
+            { id: 'meeting', label: 'Meeting 💼' },
+            { id: 'coding', label: 'Coding 💻' },
+            { id: 'prayer', label: 'Prayer 🕌' },
+            { id: 'dining', label: 'Dining 🍽️' },
+            { id: 'resting', label: 'Resting 🤒' },
+            { id: 'driving', label: 'Driving 🚗' },
+            { id: 'workout', label: 'Gym 🏋️' },
+            { id: 'gaming', label: 'Gaming 🎮' },
+            { id: 'travel', label: 'Travel ✈️' },
+            { id: 'dnd', label: 'DND 🛑' }
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => changeMode(item.id)}
+              className={`rounded-xl px-2 py-2 text-xs font-semibold transition-all ${
+                activeMode === item.id
+                  ? 'bg-sheuli text-night-900 shadow-glow scale-[1.02]'
+                  : 'bg-white/5 text-petal-dim hover:bg-white/10 hover:text-petal'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Connection status */}

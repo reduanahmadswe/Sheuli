@@ -430,7 +430,10 @@ export default function Settings() {
         )}
       </Section>
 
-      <Section title="Sheuli's personality" description="This is the system prompt sent to the AI on every reply.">
+      <Section title="Sheuli's personality" description="This is the core identity & language rules prompt sent to the AI on every reply.">
+        <div className="mb-3 rounded-xl border border-sheuli/30 bg-sheuli/10 px-3.5 py-2.5 text-xs text-sheuli-light">
+          💡 <strong>Dynamic Mode Notice:</strong> Active Modes (Sleep 🌙, Class 🏫, Study 📚, Exam 📝, Driving 🚗) automatically inject live status instructions into every reply dynamically. You don't need to hardcode "sleeping" or "in class" here!
+        </div>
         <textarea
           value={settings.systemPrompt}
           onChange={(e) => patch({ systemPrompt: e.target.value })}
@@ -444,6 +447,107 @@ export default function Settings() {
         >
           {saving ? 'Saving…' : 'Save prompt'}
         </button>
+      </Section>
+
+      <Section
+        title="🎙️ Voice Note & Voice Reply Settings"
+        description="Configure how Sheuli handles incoming WhatsApp voice notes and voice responses."
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-petal">Voice Auto-Reply Mode</p>
+              <p className="text-xs text-petal-dim">
+                When enabled, Sheuli will reply using synthesized voice notes (TTS) for voice messages!
+              </p>
+            </div>
+            <select
+              value={settings.voiceReplyMode || 'auto'}
+              onChange={(e) => save({ voiceReplyMode: e.target.value })}
+              className="rounded-xl border border-white/10 bg-night-500 px-3 py-1.5 text-sm text-sheuli-light font-semibold"
+            >
+              <option value="auto">Smart Auto ⚡ (Voice for Voice 🎙️, Text for Text 💬)</option>
+              <option value="voice">Always Voice Note 🎙️ (TTS Voice for All)</option>
+              <option value="text">Always Text Reply 💬 (Text Only)</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-white/5 pt-3">
+            <div>
+              <p className="text-sm font-medium text-petal">AI Voice Actor (Tone)</p>
+              <p className="text-xs text-petal-dim">
+                Select the voice actor used when Sheuli generates audio responses.
+              </p>
+            </div>
+            <select
+              value={settings.ttsVoice || 'nova'}
+              onChange={(e) => save({ ttsVoice: e.target.value })}
+              className="rounded-xl border border-white/10 bg-night-500 px-3 py-1.5 text-sm text-sheuli-light font-semibold"
+            >
+              <option value="nova">Nova 🌸 (Sweet & Warm Female - Recommended)</option>
+              <option value="shimmer">Shimmer ✨ (Clear Female)</option>
+              <option value="alloy">Alloy 🎙️ (Neutral Assistant)</option>
+              <option value="echo">Echo 🎧 (Calm Male)</option>
+              <option value="fable">Fable 📖 (Expressive)</option>
+              <option value="onyx">Onyx 🔊 (Deep Male)</option>
+            </select>
+          </div>
+        </div>
+      </Section>
+
+      <Section
+        title="🏫 University Class Routine"
+        description="Sheuli will automatically switch to Class Mode 🏫 during your class hours to inform people you are attending class."
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-petal-dim">
+            Current Routine Slots:
+          </p>
+          <div className="rounded-xl border border-white/10 bg-night-500/60 p-3 text-xs text-petal space-y-2">
+            {(() => {
+              let schedule = [];
+              try { schedule = JSON.parse(settings.classSchedule || '[]'); } catch {}
+              if (!Array.isArray(schedule) || schedule.length === 0) {
+                return <p className="text-petal-dim italic">No class routine added yet. (e.g. Mon 10:00 - 13:00 CSE 301)</p>;
+              }
+              return schedule.map((slot, idx) => (
+                <div key={idx} className="flex items-center justify-between border-b border-white/5 py-1.5 last:border-none">
+                  <span className="font-semibold text-sheuli-light">{slot.day} {slot.startTime}–{slot.endTime}</span>
+                  <span className="text-petal-dim">{slot.subject}</span>
+                  <button
+                    onClick={() => {
+                      const next = schedule.filter((_, i) => i !== idx);
+                      save({ classSchedule: JSON.stringify(next) });
+                    }}
+                    className="text-red-400 hover:text-red-300 font-bold px-2"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ));
+            })()}
+          </div>
+          <button
+            onClick={() => {
+              const day = prompt('Enter Day (e.g. Mon, Tue, Wed):', 'Mon');
+              if (!day) return;
+              const startTime = prompt('Start Time (HH:MM in 24h format, e.g. 10:00):', '10:00');
+              if (!startTime) return;
+              const endTime = prompt('End Time (HH:MM in 24h format, e.g. 13:00):', '13:00');
+              if (!endTime) return;
+              const subject = prompt('Subject/Class Name (e.g. CSE 301):', 'CSE 301');
+              if (!subject) return;
+
+              let current = [];
+              try { current = JSON.parse(settings.classSchedule || '[]'); } catch {}
+              current.push({ day, startTime, endTime, subject });
+              save({ classSchedule: JSON.stringify(current) });
+            }}
+            className="w-fit rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-petal hover:bg-white/10"
+          >
+            + Add Class Routine Slot
+          </button>
+        </div>
       </Section>
 
       <Section

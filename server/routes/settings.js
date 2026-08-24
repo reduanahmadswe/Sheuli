@@ -15,7 +15,11 @@ const EDITABLE_KEYS = [
   'costLimitDaily',
   'dailySummaryEnabled',
   'dailySummaryTime',
-  'dailySummarySkipIfEmpty'
+  'dailySummarySkipIfEmpty',
+  'activeMode',
+  'classSchedule',
+  'voiceReplyMode',
+  'ttsVoice'
 ];
 
 const NUMERIC_KEYS = new Set(['costLimitDaily', 'rateLimitPerHour']);

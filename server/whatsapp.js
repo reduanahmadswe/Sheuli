@@ -10,6 +10,9 @@ import { classifyChatId } from './chatFilter.js';
 import { isSheuliActive } from './schedule.js';
 import { isCostLimitReached, recordApiCost } from './costGuard.js';
 import { runDailySummary } from './summary.js';
+import { transcribeAudioMedia, generateVoiceReplyAudio } from './services/voiceHandler.js';
+import { getActiveModeDetails, getModeSystemInstruction, isEmergencyMessage } from './modes.js';
+import { parseNaturalLanguageEvent, saveCalendarEvent, getScheduleSummaryForDate } from './services/googleCalendar.js';
 import {
   upsertContact,
   isRawId,
@@ -24,10 +27,11 @@ import {
   isIntroDue,
   setIntroSent,
   countRepliesInLastHour,
-  clearAllChatHistory
+  clearAllChatHistory,
+  getDb
 } from './db.js';
 
-const { Client, LocalAuth } = pkg;
+const { Client, LocalAuth, MessageMedia } = pkg;
 
 let client = null;
 let ioRef = null;
@@ -172,6 +176,23 @@ function randomDelay(minMs = 3000, maxMs = 8000) {
   return new Promise((resolve) => setTimeout(resolve, minMs + Math.random() * (maxMs - minMs)));
 }
 
+async function downloadMediaWithRetry(message, retries = 3, delayMs = 1200) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+      const media = await message.downloadMedia();
+      if (media && media.data) {
+        return media;
+      }
+    } catch (err) {
+      logger.warn({ err: err?.message || err, attempt: i + 1 }, 'downloadMedia attempt failed, retrying...');
+    }
+  }
+  return null;
+}
+
 // Logs (and broadcasts to the dashboard) a message that was skipped before any
 // contact record or AI call was ever created — used for chat types that are
 // never eligible for a reply (groups, channels, broadcasts, self-chat, etc.).
@@ -203,6 +224,19 @@ async function handleSelfCommand(message, body) {
       } catch {
         // Ignore — best-effort error notice only.
       }
+    }
+    return true;
+  }
+
+  if (command.startsWith('/schedule') || command.startsWith('sheuli, schedule') || command.startsWith('schedule ')) {
+    try {
+      const parsed = parseNaturalLanguageEvent(body);
+      const saved = saveCalendarEvent(getDb(), parsed);
+      await message.reply(
+        `✅ Event scheduled!\n📌 **${saved.summary}**\n📅 ${saved.displayDate} at ${saved.displayTime}\nAdded to your Calendar.`
+      );
+    } catch (err) {
+      await message.reply(`❌ Schedule save failed: ${err.message}`);
     }
     return true;
   }
@@ -365,7 +399,28 @@ async function handleIncomingMessage(message) {
   upsertContact({ id: chatId, name: contactName, number: contactNumber, isGroup: false });
   touchContact(chatId);
 
-  const incomingBody = (message.body || '').trim();
+  let incomingBody = (message.body || '').trim();
+  let isVoice = false;
+  let voiceTranscript = null;
+
+  // ── FEATURE: Voice Note Reader & Whisper Transcription ─────────────────
+  if (message.hasMedia && (message.type === 'audio' || message.type === 'ptt')) {
+    try {
+      isVoice = true;
+      const media = await downloadMediaWithRetry(message, 3, 1200);
+      if (media && media.data) {
+        voiceTranscript = await transcribeAudioMedia(media);
+      }
+      if (voiceTranscript) {
+        incomingBody = `[Voice Note Transcribed]: "${voiceTranscript}"`;
+      } else {
+        incomingBody = '[Voice Note Received]';
+      }
+    } catch (voiceErr) {
+      logger.warn({ err: voiceErr?.message || voiceErr, chatId }, 'Voice note transcription failed');
+      incomingBody = '[Voice Note Received]';
+    }
+  }
 
   // Snapshot conversation history BEFORE logging this incoming message,
   // so it isn't counted twice (once from history, once as the new prompt).
@@ -384,6 +439,8 @@ async function handleIncomingMessage(message) {
     direction: 'in',
     body: incomingBody,
     status: 'received',
+    isVoice,
+    voiceTranscript,
     createdAt: new Date().toISOString()
   });
 
@@ -409,17 +466,11 @@ async function handleIncomingMessage(message) {
 
 
   // ── FEATURE 2: schedule enforcement ─────────────────────────────────────
-  // Re-evaluated fresh on every incoming message (pure function, no cached
-  // flag) so a cutoff always takes effect immediately, even after a restart.
   if (!isSheuliActive(settings)) {
     recordSkip(settings.mode === 'schedule' ? 'skipped-outside-schedule' : 'skipped');
     return;
   }
 
-  // rateLimitPerHour is read fresh from settings on every message (no cached
-  // counter), so raising/lowering it — or turning it off entirely — takes
-  // effect immediately on the contact's very next message, no restart needed.
-  // 0 means unlimited: skip the check (and the DB query) entirely.
   const rateLimit = settings.rateLimitPerHour ?? config.defaults.rateLimitPerHour;
   if (rateLimit > 0) {
     const replyCount = countRepliesInLastHour(chatId);
@@ -429,16 +480,11 @@ async function handleIncomingMessage(message) {
     }
   }
 
-  // FEATURE 2: daily cost guard — once the configured limit is hit, stop
-  // making OpenAI calls for the rest of the local day rather than risk a
-  // surprise bill from a flood of messages.
   if (isCostLimitReached()) {
     recordSkip('skipped-cost-limit');
     return;
   }
 
-  // Per-contact processing lock: if Sheuli is still generating/sending a reply
-  // for this contact, drop this message rather than risk a second reply.
   if (busyContacts.has(chatId)) {
     logger.debug({ chatId }, 'Contact is already being processed — dropping message to avoid a duplicate reply');
     recordSkip('skipped');
@@ -448,12 +494,25 @@ async function handleIncomingMessage(message) {
 
   const introDue = isIntroDue(priorContact);
 
+  // ── FEATURE: Personal & Student Modes + Schedule Context ───────────────
+  const modeDetails = getActiveModeDetails(settings);
+  const modeContext = getModeSystemInstruction(modeDetails, settings);
+  const scheduleContext = getScheduleSummaryForDate(getDb());
+
+  // Check for Emergency Override during Sleep/Exam modes
+  if ((modeDetails.mode === 'sleep' || modeDetails.mode === 'exam') && isEmergencyMessage(incomingBody)) {
+    logger.warn({ chatId, incomingBody }, '🚨 EMERGENCY MESSAGE DETECTED! Notifying owner.');
+    ioRef?.emit('emergency:alert', { chatId, contactName, message: incomingBody });
+  }
+
   try {
     const { reply, promptTokens, completionTokens } = await generateReply({
       contactId: chatId,
       incomingBody,
       history: conversationHistory,
-      isFirstReply: introDue
+      isFirstReply: introDue,
+      modeContext,
+      scheduleContext
     });
 
     recordApiCost(promptTokens, completionTokens).catch((err) => {
@@ -473,21 +532,41 @@ async function handleIncomingMessage(message) {
     let sentSuccess = false;
     let lastErr = null;
 
-    try {
-      await message.reply(reply);
-      sentSuccess = true;
-    } catch (replyErr) {
-      lastErr = replyErr;
-      logger.warn({ err: replyErr?.message || replyErr, chatId }, 'message.reply() failed, trying candidate JIDs...');
+    // ── FEATURE: Voice Auto-Reply (TTS) ──────────────────────────────────
+    const voiceMode = settings.voiceReplyMode || 'auto';
+    const shouldSendVoiceReply = voiceMode === 'voice' || (voiceMode === 'auto' && isVoice);
 
-      for (const jid of candidateJids) {
-        try {
-          await client.sendMessage(jid, reply, { linkPreview: false });
+    if (shouldSendVoiceReply) {
+      try {
+        const voiceName = settings.ttsVoice || 'nova';
+        const audioReply = await generateVoiceReplyAudio(reply, voiceName);
+        if (audioReply) {
+          const media = new MessageMedia(audioReply.mimetype, audioReply.base64, 'reply.mp3');
+          await message.reply(media);
           sentSuccess = true;
-          break;
-        } catch (sendErr) {
-          lastErr = sendErr;
-          logger.warn({ err: sendErr?.message || sendErr, jid }, `client.sendMessage failed for ${jid}`);
+        }
+      } catch (voiceReplyErr) {
+        logger.warn({ err: voiceReplyErr?.message || voiceReplyErr }, 'Voice TTS reply failed, falling back to text');
+      }
+    }
+
+    if (!sentSuccess) {
+      try {
+        await message.reply(reply);
+        sentSuccess = true;
+      } catch (replyErr) {
+        lastErr = replyErr;
+        logger.warn({ err: replyErr?.message || replyErr, chatId }, 'message.reply() failed, trying candidate JIDs...');
+
+        for (const jid of candidateJids) {
+          try {
+            await client.sendMessage(jid, reply, { linkPreview: false });
+            sentSuccess = true;
+            break;
+          } catch (sendErr) {
+            lastErr = sendErr;
+            logger.warn({ err: sendErr?.message || sendErr, jid }, `client.sendMessage failed for ${jid}`);
+          }
         }
       }
     }
@@ -1224,10 +1303,13 @@ export async function logoutWhatsApp({ clearHistory = false } = {}) {
 }
 
 export async function syncContactsFromWhatsApp() {
-  if (!client || connectionStatus !== 'ready') {
+  if (!client || (connectionStatus !== 'ready' && connectionStatus !== 'connected')) {
     logger.warn('WhatsApp client is not ready for contact sync');
     return { ok: false, count: 0 };
   }
+
+  // Small delay so WhatsApp Web finishes populating its internal chat store
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   try {
     logger.info('Syncing contacts & chat names from WhatsApp...');
@@ -1267,7 +1349,7 @@ export async function syncContactsFromWhatsApp() {
     logger.info({ count }, 'Finished syncing contacts & chat names from WhatsApp');
     return { ok: true, count };
   } catch (err) {
-    logger.error({ err: err?.message || err }, 'Error syncing contacts from WhatsApp');
+    logger.warn({ err: err?.message || err }, 'Contact sync deferred (WhatsApp chat store populating)');
     return { ok: false, error: err?.message || 'Sync failed' };
   }
 }

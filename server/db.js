@@ -81,6 +81,12 @@ function ensureColumn(table, column, definition) {
 ensureColumn('contacts', 'intro_sent', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('contacts', 'memory_cleared_at', 'TEXT');
 ensureColumn('contacts', 'last_read_at', 'TEXT');
+ensureColumn('messages', 'is_voice', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('messages', 'voice_transcript', 'TEXT');
+
+export function getDb() {
+  return db;
+}
 
 // One-time upgrade: earlier versions persisted a systemPrompt without the
 // language-mirroring rule. If the stored value is still byte-for-byte that old
@@ -190,6 +196,10 @@ export function getAllSettings() {
   return {
     autoReplyEnabled: getSetting('autoReplyEnabled', d.autoReplyEnabled),
     mode: getSetting('mode', defaultMode),
+    activeMode: getSetting('activeMode', 'normal'),
+    classSchedule: getSetting('classSchedule', '[]'),
+    voiceReplyMode: getSetting('voiceReplyMode', 'auto'),
+    ttsVoice: getSetting('ttsVoice', 'nova'),
     scheduleStart: getSetting('scheduleStart', d.scheduleStart),
     scheduleEnd: getSetting('scheduleEnd', d.scheduleEnd),
     scheduleDays: getSetting('scheduleDays', d.scheduleDays),

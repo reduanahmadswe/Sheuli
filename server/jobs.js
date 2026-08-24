@@ -59,7 +59,11 @@ async function startupSummaryCatchUp() {
       logger.info('Sent missed daily summary on startup catch-up');
     }
   } catch (err) {
-    logger.error({ err: err?.message || err }, 'Startup daily-summary catch-up failed');
+    if (err?.message?.includes('not connected')) {
+      logger.debug('Startup daily-summary catch-up skipped — WhatsApp client is still connecting on boot');
+    } else {
+      logger.warn({ err: err?.message || err }, 'Startup daily-summary catch-up deferred');
+    }
   }
 }
 

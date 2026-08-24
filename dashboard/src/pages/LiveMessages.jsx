@@ -102,6 +102,8 @@ function MessageBubble({ msg }) {
     );
   }
 
+  const isVoiceMsg = msg.isVoice || (msg.body && msg.body.includes('[Voice Note'));
+
   return (
     <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
       <div className="flex max-w-[75%] flex-col gap-1">
@@ -112,6 +114,11 @@ function MessageBubble({ msg }) {
               : 'rounded-bl-sm border border-white/5 bg-night-300/80 text-petal'
           }`}
         >
+          {isVoiceMsg && (
+            <div className="flex items-center gap-1.5 text-xs font-semibold mb-1 text-sheuli-light">
+              <span>🎙️ Voice Note</span>
+            </div>
+          )}
           {msg.body}
         </div>
         <span className={`px-1 text-[10px] text-petal-dim/70 ${isOut ? 'text-right' : 'text-left'}`}>

@@ -25,13 +25,27 @@ function detectLanguageHint(text) {
   return 'english';
 }
 
-function buildMessages({ systemPrompt, history, incomingBody, isFirstReply, languageHint }) {
+function buildMessages({ systemPrompt, history, incomingBody, isFirstReply, languageHint, modeContext, scheduleContext }) {
   const messages = [{ role: 'system', content: systemPrompt }];
+
+  if (scheduleContext) {
+    messages.push({
+      role: 'system',
+      content: `CALENDAR & SCHEDULE INFORMATION:\n${scheduleContext}`
+    });
+  }
 
   for (const entry of history) {
     messages.push({
       role: entry.direction === 'in' ? 'user' : 'assistant',
       content: entry.body
+    });
+  }
+
+  if (modeContext) {
+    messages.push({
+      role: 'system',
+      content: `CRITICAL CURRENT STATUS & MODE INSTRUCTION (MUST FOLLOW FOR THIS REPLY):\n${modeContext}`
     });
   }
 
@@ -47,11 +61,23 @@ function buildMessages({ systemPrompt, history, incomingBody, isFirstReply, lang
     content: `The user's latest message appears to be in: ${languageHint}. Reply in ${languageHint}.`
   });
 
+  if (incomingBody.startsWith('[Voice Note Transcribed]:')) {
+    messages.push({
+      role: 'system',
+      content: 'The user sent a voice message. The transcribed text of their voice message is provided. Answer their voice message content directly and naturally.'
+    });
+  } else if (incomingBody.includes('[Voice Note Received]')) {
+    messages.push({
+      role: 'system',
+      content: 'The user sent a voice message. Inform them warmly that you received their voice note and Reduan will listen to it soon.'
+    });
+  }
+
   messages.push({ role: 'user', content: incomingBody });
   return messages;
 }
 
-export async function generateReply({ contactId, incomingBody, history = [], isFirstReply = history.length === 0 }) {
+export async function generateReply({ contactId, incomingBody, history = [], isFirstReply = history.length === 0, modeContext = null, scheduleContext = null }) {
   const settings = getAllSettings();
   const languageHint = detectLanguageHint(incomingBody);
 
@@ -60,7 +86,9 @@ export async function generateReply({ contactId, incomingBody, history = [], isF
     history,
     incomingBody,
     isFirstReply,
-    languageHint
+    languageHint,
+    modeContext,
+    scheduleContext
   });
 
   try {
