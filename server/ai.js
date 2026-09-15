@@ -25,7 +25,7 @@ function detectLanguageHint(text) {
   return 'english';
 }
 
-function buildMessages({ systemPrompt, history, incomingBody, isFirstReply, languageHint, modeContext, scheduleContext }) {
+function buildMessages({ systemPrompt, history, incomingBody, isFirstReply, languageHint, activityContext, modeContext, scheduleContext }) {
   const messages = [{ role: 'system', content: systemPrompt }];
 
   if (scheduleContext) {
@@ -42,10 +42,11 @@ function buildMessages({ systemPrompt, history, incomingBody, isFirstReply, lang
     });
   }
 
-  if (modeContext) {
+  const liveContext = activityContext || modeContext;
+  if (liveContext) {
     messages.push({
       role: 'system',
-      content: `CRITICAL CURRENT STATUS & MODE INSTRUCTION (MUST FOLLOW FOR THIS REPLY):\n${modeContext}`
+      content: `CURRENT STATUS & PRIORITY INSTRUCTION (MUST FOLLOW FOR THIS REPLY):\n${liveContext}`
     });
   }
 
@@ -77,7 +78,15 @@ function buildMessages({ systemPrompt, history, incomingBody, isFirstReply, lang
   return messages;
 }
 
-export async function generateReply({ contactId, incomingBody, history = [], isFirstReply = history.length === 0, modeContext = null, scheduleContext = null }) {
+export async function generateReply({
+  contactId,
+  incomingBody,
+  history = [],
+  isFirstReply = history.length === 0,
+  activityContext = null,
+  modeContext = null,
+  scheduleContext = null
+}) {
   const settings = getAllSettings();
   const languageHint = detectLanguageHint(incomingBody);
 
@@ -87,6 +96,7 @@ export async function generateReply({ contactId, incomingBody, history = [], isF
     incomingBody,
     isFirstReply,
     languageHint,
+    activityContext,
     modeContext,
     scheduleContext
   });

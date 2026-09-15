@@ -11,7 +11,13 @@ import { isSheuliActive } from './schedule.js';
 import { isCostLimitReached, recordApiCost } from './costGuard.js';
 import { runDailySummary } from './summary.js';
 import { transcribeAudioMedia, generateVoiceReplyAudio } from './services/voiceHandler.js';
-import { getActiveModeDetails, getModeSystemInstruction, isEmergencyMessage } from './modes.js';
+import {
+  getActiveModeDetails,
+  getModeSystemInstruction,
+  getCurrentActivity,
+  getActivitySystemInstruction,
+  isEmergencyMessage
+} from './modes.js';
 import { parseNaturalLanguageEvent, saveCalendarEvent, getScheduleSummaryForDate } from './services/googleCalendar.js';
 import {
   upsertContact,
@@ -494,13 +500,13 @@ async function handleIncomingMessage(message) {
 
   const introDue = isIntroDue(priorContact);
 
-  // ── FEATURE: Personal & Student Modes + Schedule Context ───────────────
-  const modeDetails = getActiveModeDetails(settings);
-  const modeContext = getModeSystemInstruction(modeDetails, settings);
+  // ── FEATURE: Real-time Priority Activity (Calendar -> Routine -> Mode) ──
+  const currentActivity = getCurrentActivity(settings, getDb(), new Date());
+  const activityContext = getActivitySystemInstruction(currentActivity, settings);
   const scheduleContext = getScheduleSummaryForDate(getDb());
 
   // Check for Emergency Override during Sleep/Exam modes
-  if ((modeDetails.mode === 'sleep' || modeDetails.mode === 'exam') && isEmergencyMessage(incomingBody)) {
+  if ((currentActivity.mode === 'sleep' || currentActivity.mode === 'exam') && isEmergencyMessage(incomingBody)) {
     logger.warn({ chatId, incomingBody }, '🚨 EMERGENCY MESSAGE DETECTED! Notifying owner.');
     ioRef?.emit('emergency:alert', { chatId, contactName, message: incomingBody });
   }
@@ -511,7 +517,9 @@ async function handleIncomingMessage(message) {
       incomingBody,
       history: conversationHistory,
       isFirstReply: introDue,
-      modeContext,
+      currentActivity,
+      activityContext,
+      modeContext: activityContext,
       scheduleContext
     });
 

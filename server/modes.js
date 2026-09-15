@@ -1,4 +1,6 @@
 import config from './config.js';
+import { getCurrentRunningCalendarEvent } from './services/googleCalendar.js';
+import { getZonedDateKey } from './schedule.js';
 
 export const MODES = {
   normal: { id: 'normal', name: 'Normal 🌸', icon: '🌸', description: 'Standard personal AI assistant' },
@@ -46,7 +48,7 @@ export function isEmergencyMessage(text = '') {
   return EMERGENCY_KEYWORDS.some((kw) => normalized.includes(kw));
 }
 
-export function getCurrentClassSlot(scheduleJson, timezone = config.timezone) {
+export function getCurrentClassSlot(scheduleJson, timezone = config.timezone, now = new Date()) {
   if (!scheduleJson) return null;
   let schedule = [];
   try {
@@ -57,7 +59,7 @@ export function getCurrentClassSlot(scheduleJson, timezone = config.timezone) {
 
   if (!Array.isArray(schedule) || schedule.length === 0) return null;
 
-  const now = new Date();
+  const todayKey = getZonedDateKey(now, timezone); // 'YYYY-MM-DD'
   const options = { timeZone: timezone, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false };
   const formatter = new Intl.DateTimeFormat('en-US', options);
   const parts = formatter.formatToParts(now);
@@ -77,6 +79,9 @@ export function getCurrentClassSlot(scheduleJson, timezone = config.timezone) {
   for (const slot of schedule) {
     if (!slot.day || !slot.startTime || !slot.endTime) continue;
 
+    // Check expiration date if specified
+    if (slot.validUntil && todayKey > slot.validUntil) continue;
+
     const slotDayShort = slot.day.slice(0, 3).toLowerCase();
     if (slotDayShort !== weekday.slice(0, 3).toLowerCase()) continue;
 
@@ -88,10 +93,15 @@ export function getCurrentClassSlot(scheduleJson, timezone = config.timezone) {
 
     if (currentMinutes >= startMinutes && currentMinutes <= endMinutes) {
       return {
+        id: slot.id,
         subject: slot.subject || 'Class',
+        code: slot.code || '',
+        room: slot.room || '',
+        group: slot.group || 'All',
         startTime: slot.startTime,
         endTime: slot.endTime,
-        day: slot.day
+        day: slot.day,
+        validUntil: slot.validUntil
       };
     }
   }
@@ -99,28 +109,139 @@ export function getCurrentClassSlot(scheduleJson, timezone = config.timezone) {
   return null;
 }
 
-export function getActiveModeDetails(settings) {
-  const activeMode = settings.activeMode || 'normal';
-  const classSchedule = settings.classSchedule || '[]';
+export function getCurrentActivity(settings = {}, db = null, now = new Date()) {
+  const timezone = settings.timezone || config.timezone;
 
-  const currentClass = getCurrentClassSlot(classSchedule);
-  if (currentClass && (activeMode === 'normal' || activeMode === 'auto' || activeMode === 'class')) {
+  // 1st PRIORITY: Live ongoing Calendar Event
+  if (db) {
+    const runningCal = getCurrentRunningCalendarEvent(db, now);
+    if (runningCal) {
+      const sDate = new Date(runningCal.start_time).toLocaleTimeString('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+      const eDate = new Date(runningCal.end_time).toLocaleTimeString('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+      return {
+        priority: 1,
+        type: 'calendar',
+        mode: 'calendar',
+        title: runningCal.summary,
+        description: runningCal.description || '',
+        startTime: sDate,
+        endTime: eDate,
+        details: `Busy with: ${runningCal.summary} (${sDate} - ${eDate})`,
+        calendarEvent: runningCal
+      };
+    }
+  }
+
+  // 2nd PRIORITY: University Routine / Class Slot
+  const classSchedule = settings.classSchedule || '[]';
+  const currentClass = getCurrentClassSlot(classSchedule, timezone, now);
+  if (currentClass) {
+    const roomStr = currentClass.room ? ` (Room: ${currentClass.room})` : '';
+    const groupStr = currentClass.group && currentClass.group !== 'All' ? ` [${currentClass.group}]` : '';
     return {
+      priority: 2,
+      type: 'routine',
       mode: 'class',
-      info: MODES.class,
-      details: `In class (${currentClass.subject}) until ${currentClass.endTime}`,
+      title: currentClass.subject,
+      code: currentClass.code || '',
+      room: currentClass.room || '',
+      group: currentClass.group || '',
+      startTime: currentClass.startTime,
+      endTime: currentClass.endTime,
+      details: `In class (${currentClass.subject}${roomStr}${groupStr}) until ${currentClass.endTime}`,
       classInfo: currentClass
     };
   }
 
-  const modeInfo = MODES[activeMode] || MODES.normal;
+  // 3rd PRIORITY: Active Mode (if not 'normal')
+  const activeMode = settings.activeMode || 'normal';
+  if (activeMode !== 'normal') {
+    const modeInfo = MODES[activeMode] || MODES.normal;
+    return {
+      priority: 3,
+      type: 'mode',
+      mode: activeMode,
+      title: modeInfo.name,
+      info: modeInfo,
+      details: modeInfo.description,
+      classInfo: null
+    };
+  }
+
+  // 4th PRIORITY: Normal Assistant Mode
   return {
-    mode: activeMode,
-    info: modeInfo,
-    details: modeInfo.description,
+    priority: 4,
+    type: 'normal',
+    mode: 'normal',
+    title: 'Normal 🌸',
+    info: MODES.normal,
+    details: 'Normal Assistant Mode 🌸. Away from phone right now.',
     classInfo: null
   };
 }
+
+export function getActiveModeDetails(settings, db = null, now = new Date()) {
+  const activity = getCurrentActivity(settings, db, now);
+  if (activity.type === 'calendar') {
+    return {
+      mode: 'calendar',
+      info: { id: 'calendar', name: 'Calendar Event 📅', icon: '📅', description: activity.details },
+      details: activity.details,
+      activity
+    };
+  }
+  if (activity.type === 'routine') {
+    return {
+      mode: 'class',
+      info: MODES.class,
+      details: activity.details,
+      classInfo: activity.classInfo,
+      activity
+    };
+  }
+  const modeInfo = MODES[activity.mode] || MODES.normal;
+  return {
+    mode: activity.mode,
+    info: modeInfo,
+    details: modeInfo.description,
+    classInfo: null,
+    activity
+  };
+}
+
+export function getActivitySystemInstruction(activity, settings = {}) {
+  if (!activity) {
+    return 'CURRENT STATUS & INSTRUCTION: Normal Assistant Mode 🌸. Reduan is away from his phone right now.';
+  }
+
+  if (activity.type === 'calendar') {
+    return (
+      `CRITICAL TOP PRIORITY - CURRENT LIVE CALENDAR ACTIVITY (MUST MENTION):\n` +
+      `Reduan is CURRENTLY busy with: "${activity.title}" (from ${activity.startTime} to ${activity.endTime}).\n` +
+      `INSTRUCTION: You MUST politely, warmly, and clearly state to the sender that Reduan is currently busy with "${activity.title}" and will be available after ${activity.endTime}. Do not make any promises on his behalf.`
+    );
+  }
+
+  if (activity.type === 'routine') {
+    return (
+      `CRITICAL TOP PRIORITY - CURRENT LIVE CLASS / ROUTINE (MUST MENTION):\n` +
+      `Reduan is CURRENTLY attending university class: "${activity.title}" until ${activity.endTime}.\n` +
+      `INSTRUCTION: You MUST inform the sender warmly and politely that Reduan is currently in class (${activity.title}) and cannot reply right now. He will check messages and get back once class finishes at ${activity.endTime}. Do NOT mention room number or exact physical location in your reply.`
+    );
+  }
+
+  // Fallback to mode instruction
+  return getModeSystemInstruction({ mode: activity.mode, classInfo: activity.classInfo }, settings);
+}
+
 
 export function getModeSystemInstruction(modeDetails, settings = {}) {
   const { mode, classInfo } = modeDetails;
@@ -308,6 +429,8 @@ export default {
   EMERGENCY_KEYWORDS,
   isEmergencyMessage,
   getCurrentClassSlot,
+  getCurrentActivity,
   getActiveModeDetails,
-  getModeSystemInstruction
+  getModeSystemInstruction,
+  getActivitySystemInstruction
 };

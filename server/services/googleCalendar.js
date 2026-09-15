@@ -102,6 +102,30 @@ export function getUpcomingEvents(db, daysAhead = 7) {
   }
 }
 
+export function getCurrentRunningCalendarEvent(db, now = new Date()) {
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS calendar_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        summary TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        description TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+
+    const nowIso = now.toISOString();
+    const stmt = db.prepare(
+      'SELECT * FROM calendar_events WHERE start_time <= ? AND end_time >= ? ORDER BY start_time DESC LIMIT 1'
+    );
+    return stmt.get(nowIso, nowIso) || null;
+  } catch (err) {
+    logger.warn({ err: err?.message || err }, 'Failed to check current running calendar event');
+    return null;
+  }
+}
+
 export function getScheduleSummaryForDate(db, targetDateStr = 'today') {
   const events = getUpcomingEvents(db, 7);
   if (!events || events.length === 0) {
@@ -121,5 +145,7 @@ export default {
   parseNaturalLanguageEvent,
   saveCalendarEvent,
   getUpcomingEvents,
+  getCurrentRunningCalendarEvent,
   getScheduleSummaryForDate
 };
+
