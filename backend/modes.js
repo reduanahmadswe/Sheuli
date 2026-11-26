@@ -35,7 +35,15 @@ export const MODES = {
   charging: { id: 'charging', name: 'Charging 🔌', icon: '🔌', description: 'Phone charging away from hands' },
   reading: { id: 'reading', name: 'Reading 📖', icon: '📖', description: 'Reading a book or novel' },
   outdoors: { id: 'outdoors', name: 'Outdoors 🏕️', icon: '🏕️', description: 'Outdoors, park or camping' },
-  thinking: { id: 'thinking', name: 'Thinking 🧠', icon: '🧠', description: 'Deep thinking & strategy planning' }
+  thinking: { id: 'thinking', name: 'Thinking 🧠', icon: '🧠', description: 'Deep thinking & strategy planning' },
+  office: { id: 'office', name: 'At Office 🏢', icon: '🏢', description: 'Working at the office' },
+  focus: { id: 'focus', name: 'Focus Work 🎯', icon: '🎯', description: 'Concentrating on urgent work' },
+  presentation: { id: 'presentation', name: 'Presentation 📊', icon: '📊', description: 'Giving a presentation or demo' },
+  onlinemeeting: { id: 'onlinemeeting', name: 'Online Meet 🖥️', icon: '🖥️', description: 'In an online call' },
+  lunch: { id: 'lunch', name: 'Lunch Break 🍱', icon: '🍱', description: 'Out for lunch' },
+  deadline: { id: 'deadline', name: 'Deadline ⏰', icon: '⏰', description: 'Working against a deadline' },
+  wfh: { id: 'wfh', name: 'Work From Home 🏠', icon: '🏠', description: 'Working from home' },
+  leave: { id: 'leave', name: 'On Leave 🌴', icon: '🌴', description: 'On leave from work' }
 };
 
 export const EMERGENCY_KEYWORDS = [
@@ -125,7 +133,16 @@ export function getActiveModeDetails(settings, db = null, now = new Date()) {
 const fillOwner = (text, settings) => text.replaceAll('{owner}', () => settings.effectiveOwnerName || 'the owner');
 
 export function getActivitySystemInstruction(activity, settings = {}) {
-  return fillOwner(activityTemplate(activity, settings), settings);
+  let text = activityTemplate(activity, settings);
+  if (activity?.type === 'mode' && settings.modeUntil) {
+    const time = new Date(settings.modeUntil).toLocaleTimeString('en-US', {
+      timeZone: settings.timezone || config.timezone,
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+    text += `\nMention that {owner} expects to be free after ${time}.`;
+  }
+  return fillOwner(text, settings);
 }
 
 function activityTemplate(activity, settings) {
@@ -324,6 +341,46 @@ function modeTemplate(modeDetails, settings) {
       return (
         'CURRENT STATUS & INSTRUCTION: {owner} is TRAVELLING / ON TOUR ✈️.\n' +
         'Inform the sender warmly that {owner} is traveling and responses might be slightly delayed.'
+      );
+    case 'office':
+      return (
+        'CURRENT STATUS & INSTRUCTION: {owner} is AT THE OFFICE working 🏢.\n' +
+        'Inform the sender politely that {owner} is busy with office work and will reply when free.'
+      );
+    case 'focus':
+      return (
+        'CURRENT STATUS & INSTRUCTION: {owner} is doing FOCUSED WORK 🎯.\n' +
+        'Inform the sender politely that {owner} is concentrating on important work and will reply later.'
+      );
+    case 'presentation':
+      return (
+        'CURRENT STATUS & INSTRUCTION: {owner} is in a PRESENTATION 📊.\n' +
+        'Inform the sender politely that {owner} is presenting right now and will reply after it ends.'
+      );
+    case 'onlinemeeting':
+      return (
+        'CURRENT STATUS & INSTRUCTION: {owner} is in an ONLINE MEETING 🖥️.\n' +
+        'Inform the sender politely that {owner} is on a video call and will reply after the meeting.'
+      );
+    case 'lunch':
+      return (
+        'CURRENT STATUS & INSTRUCTION: {owner} is on a LUNCH BREAK 🍱.\n' +
+        'Inform the sender politely that {owner} is having lunch and will reply shortly.'
+      );
+    case 'deadline':
+      return (
+        'CURRENT STATUS & INSTRUCTION: {owner} is working on a DEADLINE ⏰.\n' +
+        'Inform the sender politely that {owner} has a deadline today, so replies may be delayed.'
+      );
+    case 'wfh':
+      return (
+        'CURRENT STATUS & INSTRUCTION: {owner} is WORKING FROM HOME 🏠.\n' +
+        'Inform the sender politely that {owner} is working from home and busy with office tasks.'
+      );
+    case 'leave':
+      return (
+        'CURRENT STATUS & INSTRUCTION: {owner} is ON LEAVE 🌴.\n' +
+        'Inform the sender politely that {owner} is on leave and will respond after returning.'
       );
     case 'normal':
     default:

@@ -49,6 +49,16 @@ router.put('/', (req, res) => {
     return res.status(400).json({ error: 'dailySummaryTime must be in HH:MM format' });
   }
 
+  const minutes = Number(updates.modeMinutes ?? 0);
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) {
+    return res.status(400).json({ error: 'modeMinutes must be between 0 and 1440' });
+  }
+  // Choosing a mode restarts its timer; 0 minutes means no end time.
+  if (updates.activeMode !== undefined) {
+    const timed = minutes > 0 && updates.activeMode !== 'normal';
+    setSetting('modeUntil', timed ? new Date(Date.now() + minutes * 60000).toISOString() : '');
+  }
+
   for (const key of EDITABLE_KEYS) {
     if (Object.prototype.hasOwnProperty.call(updates, key)) {
       let value = updates[key];

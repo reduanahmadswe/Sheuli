@@ -82,7 +82,45 @@ const MODE_OPTIONS = [
   { id: 'workout', label: 'Gym 🏋️' },
   { id: 'gaming', label: 'Gaming 🎮' },
   { id: 'travel', label: 'Travel ✈️' },
-  { id: 'dnd', label: 'DND 🛑' }
+  { id: 'dnd', label: 'DND 🛑' },
+  { id: 'office', label: 'At Office 🏢' },
+  { id: 'focus', label: 'Focus Work 🎯' },
+  { id: 'presentation', label: 'Presentation 📊' },
+  { id: 'onlinemeeting', label: 'Online Meet 🖥️' },
+  { id: 'lunch', label: 'Lunch Break 🍱' },
+  { id: 'deadline', label: 'Deadline ⏰' },
+  { id: 'wfh', label: 'Work From Home 🏠' },
+  { id: 'leave', label: 'On Leave 🌴' }
+];
+
+const CATEGORIES = [
+  { id: 'office', label: 'Office', modes: 'office focus presentation onlinemeeting meeting coding lunch deadline wfh leave oncall' },
+  { id: 'personal', label: 'Personal' },
+  { id: 'student', label: 'Student', modes: 'class study exam lab reading' },
+  { id: 'travel', label: 'Travel', modes: 'commute driving travel outdoors rainy' }
+];
+
+// Anything not listed under another category is "Personal". Office keeps the order above.
+function modesIn(categoryId) {
+  const normal = MODE_OPTIONS[0];
+  const category = CATEGORIES.find((c) => c.id === categoryId);
+  if (category.modes) {
+    return [normal, ...category.modes.split(' ').map((id) => MODE_OPTIONS.find((m) => m.id === id))];
+  }
+  const elsewhere = CATEGORIES.flatMap((c) => c.modes?.split(' ') || []);
+  return MODE_OPTIONS.filter((m) => !elsewhere.includes(m.id));
+}
+
+function categoryOf(modeId) {
+  return CATEGORIES.find((c) => c.modes?.split(' ').includes(modeId))?.id || 'personal';
+}
+
+const DURATIONS = [
+  { minutes: 0, label: 'Until I change it' },
+  { minutes: 30, label: '30 min' },
+  { minutes: 60, label: '1 hour' },
+  { minutes: 120, label: '2 hours' },
+  { minutes: 240, label: '4 hours' }
 ];
 
 function formatInZone(iso, timezone) {
@@ -118,6 +156,9 @@ export default function Overview() {
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [activeMode, setActiveMode] = useState('normal');
   const [toggling, setToggling] = useState(false);
+  const [modeUntil, setModeUntil] = useState('');
+  const [duration, setDuration] = useState(0);
+  const [category, setCategory] = useState('office');
   const [scheduleStatus, setScheduleStatus] = useState({ mode: 'manual', active: false });
 
   const fetchStatus = async () => {
@@ -147,19 +188,32 @@ export default function Overview() {
     }
   };
 
+  const applyMode = (data) => {
+    if (data.activeMode) setActiveMode(data.activeMode);
+    setModeUntil(data.modeUntil || '');
+  };
+
   const fetchSettings = async () => {
     const { data } = await api.get('/settings');
     setAutoReplyEnabled(Boolean(data.autoReplyEnabled));
-    if (data.activeMode) setActiveMode(data.activeMode);
+    applyMode(data);
+    return data;
   };
 
-  const changeMode = async (modeKey) => {
+  const changeMode = async (modeKey, minutes = duration) => {
     setActiveMode(modeKey);
     try {
-      await api.put('/settings', { activeMode: modeKey });
+      const { data } = await api.put('/settings', { activeMode: modeKey, modeMinutes: minutes });
+      applyMode(data);
     } catch {
-      // fallback
+      fetchSettings();
     }
+  };
+
+  // Picking a time also restarts the timer on the mode already running.
+  const changeDuration = (minutes) => {
+    setDuration(minutes);
+    if (activeMode !== 'normal') changeMode(activeMode, minutes);
   };
 
   const fetchSchedule = async () => {
@@ -169,7 +223,8 @@ export default function Overview() {
 
   useEffect(() => {
     fetchStatus();
-    fetchSettings();
+    // Open on the category holding the current mode.
+    fetchSettings().then((data) => data.activeMode !== 'normal' && setCategory(categoryOf(data.activeMode)));
     fetchSchedule();
 
     const socket = getSocket();
@@ -194,7 +249,10 @@ export default function Overview() {
       }
     };
     const onQr = ({ qr: qrData }) => setQr(qrData);
-    const onSettings = (settings) => setAutoReplyEnabled(Boolean(settings.autoReplyEnabled));
+    const onSettings = (settings) => {
+      setAutoReplyEnabled(Boolean(settings.autoReplyEnabled));
+      applyMode(settings);
+    };
     const onScheduleStatus = (status) => setScheduleStatus(status);
     const onStatsUpdated = () => fetchStatus();
 
@@ -205,7 +263,10 @@ export default function Overview() {
     socket.on('stats:updated', onStatsUpdated);
     socket.on('message:new', onStatsUpdated);
 
-    const interval = setInterval(fetchStatus, 15000);
+    const interval = setInterval(() => {
+      fetchStatus();
+      fetchSettings().catch(() => {}); // notices a timed mode ending
+    }, 15000);
 
     return () => {
       socket.off('whatsapp:status', onStatus);
@@ -358,13 +419,47 @@ export default function Overview() {
       {/* Mode selector */}
       <section>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="section-title">Personal modes</h2>
+          <h2 className="section-title">What are you doing?</h2>
           <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-bold text-accent-strong">
-            Active: {activeMode.toUpperCase()}
+            {MODE_OPTIONS.find((m) => m.id === activeMode)?.label || activeMode}
+            {modeUntil && ` · until ${formatInZone(modeUntil, scheduleStatus.timezone)}`}
           </span>
         </div>
+
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div role="tablist" className="card grid w-full grid-cols-4 gap-1 p-1 sm:w-auto">
+            {CATEGORIES.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                role="tab"
+                aria-selected={category === c.id}
+                onClick={() => setCategory(c.id)}
+                className={`rounded-xl px-3 py-2 text-xs font-semibold sm:px-5 sm:text-sm ${
+                  category === c.id ? 'bg-accent text-white' : 'text-muted hover:bg-soft hover:text-ink'
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+          <label className="flex w-full items-center gap-2 text-sm font-semibold text-ink sm:w-auto">
+            For how long?
+            <select
+              value={duration}
+              onChange={(e) => changeDuration(Number(e.target.value))}
+              className="flex-1 rounded-xl border border-line bg-card px-3 py-2 text-sm text-ink outline-none ring-accent/50 focus:ring-2"
+            >
+              {DURATIONS.map((d) => (
+                <option key={d.minutes} value={d.minutes}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 md:grid-cols-6 lg:grid-cols-8">
-          {MODE_OPTIONS.map((item) => {
+          {modesIn(category).map((item) => {
             // "Sleep 🌙" -> name and icon, shown stacked.
             const cut = item.label.lastIndexOf(' ');
             const selected = activeMode === item.id;

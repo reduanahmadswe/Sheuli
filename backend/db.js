@@ -173,6 +173,9 @@ function getName(key) {
 }
 
 export function getAllSettings() {
+  // A timed mode simply stops applying once its end time has passed.
+  const modeUntil = getSettingStmt.get('modeUntil')?.value || '';
+  const modeExpired = modeUntil !== '' && Date.parse(modeUntil) <= Date.now();
   const d = config.defaults;
   // Legacy fallback: earlier versions stored a plain `scheduleEnabled` boolean.
   // If a `mode` key hasn't been explicitly saved yet, honor that old value once
@@ -183,7 +186,8 @@ export function getAllSettings() {
   return {
     autoReplyEnabled: getSetting('autoReplyEnabled', d.autoReplyEnabled),
     mode: getSetting('mode', defaultMode),
-    activeMode: getSetting('activeMode', 'normal'),
+    activeMode: modeExpired ? 'normal' : getSetting('activeMode', 'normal'),
+    modeUntil: modeExpired ? '' : modeUntil,
     voiceReplyMode: getSetting('voiceReplyMode', 'auto'),
     ttsVoice: getSetting('ttsVoice', 'nova'),
     scheduleStart: getSetting('scheduleStart', d.scheduleStart),
