@@ -21,20 +21,20 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_STYLE = {
-  received: 'bg-white/10 text-petal-dim',
-  replied: 'bg-emerald-500/15 text-emerald-300',
-  skipped: 'bg-white/10 text-petal-dim',
-  rate_limited: 'bg-yellow-500/15 text-yellow-300',
-  blacklisted: 'bg-red-500/15 text-red-300',
-  'skipped-outside-schedule': 'bg-sheuli/15 text-sheuli-light',
-  'skipped-cost-limit': 'bg-yellow-500/15 text-yellow-300',
-  'skipped-group': 'bg-white/10 text-petal-dim',
-  'skipped-channel': 'bg-white/10 text-petal-dim',
-  'skipped-broadcast': 'bg-white/10 text-petal-dim',
-  'skipped-status': 'bg-white/10 text-petal-dim',
-  'skipped-self': 'bg-white/10 text-petal-dim',
-  'skipped-unknown-chat-type': 'bg-white/10 text-petal-dim',
-  error: 'bg-red-500/15 text-red-300'
+  received: 'bg-line text-muted',
+  replied: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  skipped: 'bg-line text-muted',
+  rate_limited: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300',
+  blacklisted: 'bg-red-500/15 text-red-700 dark:text-red-300',
+  'skipped-outside-schedule': 'bg-accent/15 text-accent-strong',
+  'skipped-cost-limit': 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300',
+  'skipped-group': 'bg-line text-muted',
+  'skipped-channel': 'bg-line text-muted',
+  'skipped-broadcast': 'bg-line text-muted',
+  'skipped-status': 'bg-line text-muted',
+  'skipped-self': 'bg-line text-muted',
+  'skipped-unknown-chat-type': 'bg-line text-muted',
+  error: 'bg-red-500/15 text-red-700 dark:text-red-300'
 };
 
 function formatDate(iso) {
@@ -55,24 +55,24 @@ function formatDate(iso) {
 function SummaryRow({ summary, expanded, onToggle }) {
   const preview = (summary.content || '').split('\n')[0];
   return (
-    <div className="border-b border-white/5 last:border-none">
+    <div className="border-b border-line last:border-none">
       <button
         onClick={onToggle}
-        className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-white/5"
+        className="flex w-full flex-col gap-2 px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between sm:gap-4 transition-colors hover:bg-soft"
       >
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-petal">{formatDate(summary.created_at)}</p>
-          <p className="truncate text-xs text-petal-dim">{preview}</p>
+          <p className="text-sm font-medium text-ink">{formatDate(summary.created_at)}</p>
+          <p className="truncate text-xs text-muted">{preview}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-3 text-xs text-petal-dim">
+        <div className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-muted">
           <span>{summary.contact_count} contacts</span>
           <span>{summary.message_count} msgs</span>
-          <span className="rounded-full bg-white/10 px-2 py-0.5">{summary.trigger}</span>
-          <span className="text-petal-dim">{expanded ? '▲' : '▼'}</span>
+          <span className="rounded-full bg-line px-2 py-0.5">{summary.trigger}</span>
+          <span className="text-muted">{expanded ? '▲' : '▼'}</span>
         </div>
       </button>
       {expanded && (
-        <div className="whitespace-pre-wrap px-4 pb-4 font-bengali text-sm text-petal">{summary.content}</div>
+        <div className="whitespace-pre-wrap px-4 pb-4 font-bengali text-sm text-ink">{summary.content}</div>
       )}
     </div>
   );
@@ -125,14 +125,14 @@ export default function Logs() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-petal">Logs</h1>
-          <p className="text-sm text-petal-dim">Every message event Sheuli has recorded, and her daily summaries.</p>
+          <h1 className="page-title">Logs</h1>
+          <p className="text-sm text-muted">Every message event Sheuli has recorded, and her daily summaries.</p>
         </div>
         {tab === 'logs' && (
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="rounded-lg border border-white/10 bg-night-400/60 px-3 py-2 text-sm text-petal outline-none"
+            className="rounded-lg border border-line bg-card px-3 py-2 text-sm text-ink outline-none"
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
@@ -143,7 +143,7 @@ export default function Logs() {
         )}
       </div>
 
-      <div className="inline-flex w-fit rounded-xl border border-white/10 bg-night-500/60 p-1">
+      <div className="inline-flex w-fit rounded-xl border border-line bg-soft p-1">
         {[
           { key: 'logs', label: 'Logs' },
           { key: 'summaries', label: '🌅 Summaries' }
@@ -152,7 +152,7 @@ export default function Logs() {
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
-              tab === t.key ? 'bg-sheuli text-night-900' : 'text-petal-dim hover:text-petal'
+              tab === t.key ? 'bg-accent text-white' : 'text-muted hover:text-ink'
             }`}
           >
             {t.label}
@@ -161,10 +161,10 @@ export default function Logs() {
       </div>
 
       {tab === 'logs' && (
-        <div className="overflow-x-auto rounded-2xl border border-white/10 bg-night-400/40 backdrop-blur-xl">
-          <table className="w-full min-w-[720px] text-left text-sm">
+        <div className="overflow-x-auto rounded-2xl border border-line bg-card shadow-card">
+          <table className="stack-table w-full text-left text-sm sm:min-w-[720px]">
             <thead>
-              <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-petal-dim">
+              <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
                 <th className="px-4 py-3">Time</th>
                 <th className="px-4 py-3">Contact</th>
                 <th className="px-4 py-3">Direction</th>
@@ -174,16 +174,16 @@ export default function Logs() {
             </thead>
             <tbody>
               {logs.map((log) => (
-                <tr key={log.id} className="border-b border-white/5 last:border-none">
-                  <td className="whitespace-nowrap px-4 py-3 text-petal-dim">{formatDate(log.created_at)}</td>
-                  <td className="px-4 py-3 text-petal">{getDisplayName(log.contact_name, null, log.contact_id)}</td>
-                  <td className="px-4 py-3 text-petal-dim">{log.direction === 'in' ? 'Received' : 'Sent'}</td>
-                  <td className="max-w-xs truncate px-4 py-3 text-petal-dim" title={log.body}>
+                <tr key={log.id} className="border-b border-line last:border-none">
+                  <td data-label="Time" className="whitespace-nowrap px-4 py-3 text-muted">{formatDate(log.created_at)}</td>
+                  <td data-label="Contact" className="px-4 py-3 text-ink">{getDisplayName(log.contact_name, null, log.contact_id)}</td>
+                  <td data-label="Direction" className="px-4 py-3 text-muted">{log.direction === 'in' ? 'Received' : 'Sent'}</td>
+                  <td data-label="Message" className="px-4 py-3 text-muted sm:max-w-xs sm:truncate" title={log.body}>
                     {log.body || '—'}
                   </td>
-                  <td className="px-4 py-3">
+                  <td data-label="Status" className="px-4 py-3">
                     <span
-                      className={`rounded-full px-2.5 py-1 text-xs ${STATUS_STYLE[log.status] || 'bg-white/10 text-petal-dim'}`}
+                      className={`rounded-full px-2.5 py-1 text-xs ${STATUS_STYLE[log.status] || 'bg-line text-muted'}`}
                     >
                       {log.status.replace('_', ' ')}
                     </span>
@@ -192,7 +192,7 @@ export default function Logs() {
               ))}
               {!loading && logs.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-petal-dim">
+                  <td colSpan={5} className="px-4 py-8 text-center text-muted">
                     No logs yet.
                   </td>
                 </tr>
@@ -203,7 +203,7 @@ export default function Logs() {
       )}
 
       {tab === 'summaries' && (
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-night-400/40 backdrop-blur-xl">
+        <div className="overflow-hidden rounded-2xl border border-line bg-card shadow-card">
           {summaries.map((s) => (
             <SummaryRow
               key={s.id}
@@ -213,7 +213,7 @@ export default function Logs() {
             />
           ))}
           {!summariesLoading && summaries.length === 0 && (
-            <p className="px-4 py-8 text-center text-petal-dim">
+            <p className="px-4 py-8 text-center text-muted">
               No summaries yet — the first one will appear here once Sheuli's daily summary runs.
             </p>
           )}

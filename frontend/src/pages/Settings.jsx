@@ -45,11 +45,11 @@ function Toggle({ checked, onChange, disabled = false }) {
       disabled={disabled}
       aria-pressed={checked}
       className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-        checked ? 'bg-sheuli' : 'bg-white/10'
+        checked ? 'bg-accent' : 'bg-line'
       } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
     >
       <span
-        className={`absolute top-1 h-4 w-4 rounded-full bg-petal transition-transform ${
+        className={`absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
           checked ? 'translate-x-6' : 'translate-x-1'
         }`}
       />
@@ -59,9 +59,9 @@ function Toggle({ checked, onChange, disabled = false }) {
 
 function Section({ title, description, children }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-night-400/50 p-6 backdrop-blur-xl">
-      <h2 className="font-semibold text-petal">{title}</h2>
-      {description && <p className="mt-1 text-xs text-petal-dim">{description}</p>}
+    <div className="rounded-2xl border border-line bg-card p-4 shadow-card sm:p-6">
+      <h2 className="section-title">{title}</h2>
+      {description && <p className="mt-1 text-xs text-muted">{description}</p>}
       <div className="mt-4">{children}</div>
     </div>
   );
@@ -90,11 +90,11 @@ function formatDiagnosticTime(iso) {
 }
 
 function DiagRow({ label, value, tone }) {
-  const toneClass = tone === 'good' ? 'text-emerald-300' : tone === 'bad' ? 'text-red-300' : 'text-petal';
+  const toneClass = tone === 'good' ? 'text-emerald-700 dark:text-emerald-300' : tone === 'bad' ? 'text-red-700 dark:text-red-300' : 'text-ink';
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-white/5 py-2 text-sm last:border-none">
-      <span className="text-petal-dim">{label}</span>
-      <span className={`text-right font-medium ${toneClass}`}>{value}</span>
+    <div className="flex items-center justify-between gap-4 border-b border-line py-2 text-sm last:border-none">
+      <span className="text-muted">{label}</span>
+      <span className={`min-w-0 break-all text-right font-medium ${toneClass}`}>{value}</span>
     </div>
   );
 }
@@ -316,7 +316,7 @@ export default function Settings() {
   };
 
   if (!settings || !schedule) {
-    return <p className="text-petal-dim">Loading settings…</p>;
+    return <p className="text-muted">Loading settings…</p>;
   }
 
   const isOvernight = schedule.scheduleStart > schedule.scheduleEnd;
@@ -324,11 +324,11 @@ export default function Settings() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-bold text-petal">Settings</h1>
-        <p className="text-sm text-petal-dim">Tune how Sheuli thinks, talks, and behaves.</p>
+        <h1 className="page-title">Settings</h1>
+        <p className="text-sm text-muted">Tune how Sheuli thinks, talks, and behaves.</p>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-night-400/30 px-4 py-3 text-xs text-petal-dim">
+      <div className="rounded-2xl border border-line bg-card px-4 py-3 text-xs text-muted">
         🔒 Sheuli only replies to personal chats. Groups, communities, channels and broadcasts are always ignored.
       </div>
 
@@ -340,14 +340,14 @@ export default function Settings() {
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <span className={`h-2.5 w-2.5 rounded-full ${getStatusDisplay(waStatus, loadingPercent, switchingAccount, sessionRecoveryFailed).color} animate-pulse`} />
-              <span className="font-semibold text-petal">{getStatusDisplay(waStatus, loadingPercent, switchingAccount, sessionRecoveryFailed).text}</span>
+              <span className="font-semibold text-ink">{getStatusDisplay(waStatus, loadingPercent, switchingAccount, sessionRecoveryFailed).text}</span>
             </div>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-petal-dim">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-muted">
               <p>
-                Number: <span className="font-mono font-medium text-petal">{waInfo?.number ? `+${waInfo.number}` : 'Not linked'}</span>
+                Number: <span className="font-mono font-medium text-ink">{waInfo?.number ? `+${waInfo.number}` : 'Not linked'}</span>
               </p>
               <p>
-                Name: <span className="font-medium text-petal">{waInfo?.name || '—'}</span>
+                Name: <span className="font-medium text-ink">{waInfo?.name || '—'}</span>
               </p>
             </div>
           </div>
@@ -357,23 +357,23 @@ export default function Settings() {
               setShowLogoutModal(true);
             }}
             disabled={waStatus === 'logging_out' || switchingAccount || loggingOut || saving}
-            className="w-fit rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 shadow-glow-sm transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-fit rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-700 dark:text-red-300 shadow-glow-sm transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Logout WhatsApp
           </button>
         </div>
 
         {waStatus === 'qr' && waQr && (
-          <div className="mt-5 flex flex-col items-center gap-2 rounded-xl border border-white/10 bg-night-500/60 p-4">
+          <div className="mt-5 flex flex-col items-center gap-2 rounded-xl border border-line bg-soft p-4">
             {sessionRecoveryFailed ? (
-              <p className="text-sm font-medium text-red-300">
+              <p className="text-sm font-medium text-red-700 dark:text-red-300">
                 Session couldn't be restored — scan the QR below to reconnect.
               </p>
             ) : (
-              <p className="text-sm font-medium text-petal">Scan to link a new WhatsApp account:</p>
+              <p className="text-sm font-medium text-ink">Scan to link a new WhatsApp account:</p>
             )}
             {pairingRejectedHint && (
-              <p className="max-w-xs text-center text-xs font-medium text-yellow-300">
+              <p className="max-w-xs text-center text-xs font-medium text-yellow-700 dark:text-yellow-300">
                 ⚠️ Last pairing was accepted, then instantly rejected by WhatsApp — likely a web-version/library
                 incompatibility, not an account issue. Try updating whatsapp-web.js, or set WA_WEB_VERSION as a
                 stopgap.
@@ -382,10 +382,10 @@ export default function Settings() {
             <div className="rounded-xl bg-white p-3 shadow-glow">
               <img src={waQr} alt="Scan this QR code with WhatsApp" className="h-48 w-48" />
             </div>
-            <p className="text-center text-xs text-petal-dim">
+            <p className="text-center text-xs text-muted">
               Open WhatsApp → Linked Devices → Link a Device, then scan this code.
             </p>
-            <p className="text-center text-[11px] text-petal-dim/80">
+            <p className="text-center text-[11px] text-muted/80">
               QR refreshes automatically (~every 60s).
             </p>
           </div>
@@ -397,7 +397,7 @@ export default function Settings() {
         description="Live values, refreshed every 10s — check this first if something seems off."
       >
         {diagnosticsLoading && !diagnostics ? (
-          <p className="text-sm text-petal-dim">Loading…</p>
+          <p className="text-sm text-muted">Loading…</p>
         ) : diagnostics ? (
           <div className="flex flex-col gap-1">
             <DiagRow
@@ -427,24 +427,24 @@ export default function Settings() {
             <DiagRow label="Server uptime" value={`${Math.floor(diagnostics.uptimeSeconds / 60)} min`} />
           </div>
         ) : (
-          <p className="text-sm text-red-400">Could not load diagnostics.</p>
+          <p className="text-sm text-red-700 dark:text-red-300">Could not load diagnostics.</p>
         )}
       </Section>
 
       <Section title="Sheuli's personality" description="This is the core identity & language rules prompt sent to the AI on every reply.">
-        <div className="mb-3 rounded-xl border border-sheuli/30 bg-sheuli/10 px-3.5 py-2.5 text-xs text-sheuli-light">
+        <div className="mb-3 rounded-xl border border-accent/30 bg-accent/10 px-3.5 py-2.5 text-xs text-accent-strong">
           💡 <strong>Dynamic Mode Notice:</strong> Active Modes (Sleep 🌙, Class 🏫, Study 📚, Exam 📝, Driving 🚗) automatically inject live status instructions into every reply dynamically. You don't need to hardcode "sleeping" or "in class" here!
         </div>
         <textarea
           value={settings.systemPrompt}
           onChange={(e) => patch({ systemPrompt: e.target.value })}
           rows={8}
-          className="font-bengali w-full rounded-xl border border-white/10 bg-night-500/80 px-4 py-3 text-sm text-petal outline-none ring-sheuli/50 focus:ring-2"
+          className="font-bengali w-full rounded-xl border border-line bg-soft px-4 py-3 text-sm text-ink outline-none ring-accent/50 focus:ring-2"
         />
         <button
           onClick={() => save({ systemPrompt: settings.systemPrompt })}
           disabled={saving}
-          className="mt-3 rounded-xl bg-sheuli px-4 py-2 text-sm font-semibold text-night-900 shadow-glow-sm transition hover:bg-sheuli-light disabled:opacity-50"
+          className="mt-3 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-glow-sm transition hover:bg-accent-hover disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save prompt'}
         </button>
@@ -455,17 +455,17 @@ export default function Settings() {
         description="Configure how Sheuli handles incoming WhatsApp voice notes and voice responses."
       >
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-medium text-petal">Voice Auto-Reply Mode</p>
-              <p className="text-xs text-petal-dim">
+              <p className="text-sm font-medium text-ink">Voice Auto-Reply Mode</p>
+              <p className="text-xs text-muted">
                 When enabled, Sheuli will reply using synthesized voice notes (TTS) for voice messages!
               </p>
             </div>
             <select
               value={settings.voiceReplyMode || 'auto'}
               onChange={(e) => save({ voiceReplyMode: e.target.value })}
-              className="rounded-xl border border-white/10 bg-night-500 px-3 py-1.5 text-sm text-sheuli-light font-semibold"
+              className="w-full rounded-xl border border-line bg-soft px-3 py-2 text-sm font-semibold text-accent-strong sm:w-auto"
             >
               <option value="auto">Smart Auto ⚡ (Voice for Voice 🎙️, Text for Text 💬)</option>
               <option value="voice">Always Voice Note 🎙️ (TTS Voice for All)</option>
@@ -473,17 +473,17 @@ export default function Settings() {
             </select>
           </div>
 
-          <div className="flex items-center justify-between border-t border-white/5 pt-3">
+          <div className="flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-medium text-petal">AI Voice Actor (Tone)</p>
-              <p className="text-xs text-petal-dim">
+              <p className="text-sm font-medium text-ink">AI Voice Actor (Tone)</p>
+              <p className="text-xs text-muted">
                 Select the voice actor used when Sheuli generates audio responses.
               </p>
             </div>
             <select
               value={settings.ttsVoice || 'nova'}
               onChange={(e) => save({ ttsVoice: e.target.value })}
-              className="rounded-xl border border-white/10 bg-night-500 px-3 py-1.5 text-sm text-sheuli-light font-semibold"
+              className="w-full rounded-xl border border-line bg-soft px-3 py-2 text-sm font-semibold text-accent-strong sm:w-auto"
             >
               <option value="nova">Nova 🌸 (Sweet & Warm Female - Recommended)</option>
               <option value="shimmer">Shimmer ✨ (Clear Female)</option>
@@ -501,13 +501,13 @@ export default function Settings() {
         description="Choose whether Sheuli is controlled by the manual switch, or only wakes up during a set window."
       >
         <div className="flex flex-col gap-5">
-          <div className="inline-flex w-fit rounded-xl border border-white/10 bg-night-500/60 p-1">
+          <div className="inline-flex w-fit rounded-xl border border-line bg-soft p-1">
             {['manual', 'schedule'].map((m) => (
               <button
                 key={m}
                 onClick={() => saveSchedule({ mode: m })}
                 className={`rounded-lg px-4 py-1.5 text-sm font-medium capitalize transition-colors ${
-                  schedule.mode === m ? 'bg-sheuli text-night-900' : 'text-petal-dim hover:text-petal'
+                  schedule.mode === m ? 'bg-accent text-white' : 'text-muted hover:text-ink'
                 }`}
               >
                 {m === 'manual' ? 'Manual' : 'Scheduled'}
@@ -518,29 +518,29 @@ export default function Settings() {
           {schedule.mode === 'schedule' && (
             <div className="flex flex-col gap-4">
               <div className="flex flex-wrap items-center gap-6">
-                <label className="flex items-center gap-2 text-sm text-petal-dim">
+                <label className="flex items-center gap-2 text-sm text-muted">
                   Start
                   <input
                     type="time"
                     value={schedule.scheduleStart}
                     onChange={(e) => patchSchedule({ scheduleStart: e.target.value })}
                     onBlur={() => saveSchedule()}
-                    className="rounded-lg border border-white/10 bg-night-500/80 px-3 py-1.5 text-petal outline-none"
+                    className="rounded-lg border border-line bg-soft px-3 py-1.5 text-ink outline-none"
                   />
                 </label>
-                <label className="flex items-center gap-2 text-sm text-petal-dim">
+                <label className="flex items-center gap-2 text-sm text-muted">
                   End
                   <input
                     type="time"
                     value={schedule.scheduleEnd}
                     onChange={(e) => patchSchedule({ scheduleEnd: e.target.value })}
                     onBlur={() => saveSchedule()}
-                    className="rounded-lg border border-white/10 bg-night-500/80 px-3 py-1.5 text-petal outline-none"
+                    className="rounded-lg border border-line bg-soft px-3 py-1.5 text-ink outline-none"
                   />
                 </label>
-                <div className="text-sm text-petal-dim">
-                  Timezone: <span className="text-petal">{schedule.timezone}</span>{' '}
-                  <span className="text-petal-dim/70">(from server config)</span>
+                <div className="text-sm text-muted">
+                  Timezone: <span className="text-ink">{schedule.timezone}</span>{' '}
+                  <span className="text-muted/70">(from server config)</span>
                 </div>
               </div>
 
@@ -553,8 +553,8 @@ export default function Settings() {
                       onClick={() => toggleDay(day)}
                       className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                         active
-                          ? 'border-sheuli/40 bg-sheuli/15 text-sheuli-light'
-                          : 'border-white/10 text-petal-dim hover:text-petal'
+                          ? 'border-accent/40 bg-accent/15 text-accent-strong'
+                          : 'border-line text-muted hover:text-ink'
                       }`}
                     >
                       {day}
@@ -563,25 +563,25 @@ export default function Settings() {
                 })}
               </div>
 
-              <p className="text-sm text-petal">
+              <p className="text-sm text-ink">
                 Sheuli will be awake {describeDays(schedule.scheduleDays)} from{' '}
-                <span className="font-semibold text-sheuli-light">{formatTime12h(schedule.scheduleStart)}</span> to{' '}
-                <span className="font-semibold text-sheuli-light">{formatTime12h(schedule.scheduleEnd)}</span> (
+                <span className="font-semibold text-accent-strong">{formatTime12h(schedule.scheduleStart)}</span> to{' '}
+                <span className="font-semibold text-accent-strong">{formatTime12h(schedule.scheduleEnd)}</span> (
                 {schedule.timezone}).
               </p>
 
               {isOvernight && (
-                <p className="text-xs text-petal-dim">
+                <p className="text-xs text-muted">
                   🌙 This window crosses midnight — Sheuli will be active overnight.
                 </p>
               )}
 
-              {scheduleError && <p className="text-sm text-red-400">{scheduleError}</p>}
+              {scheduleError && <p className="text-sm text-red-700 dark:text-red-300">{scheduleError}</p>}
 
               <button
                 onClick={() => saveSchedule()}
                 disabled={scheduleSaving}
-                className="w-fit rounded-xl bg-sheuli px-4 py-2 text-sm font-semibold text-night-900 shadow-glow-sm transition hover:bg-sheuli-light disabled:opacity-50"
+                className="w-fit rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-glow-sm transition hover:bg-accent-hover disabled:opacity-50"
               >
                 {scheduleSaving ? 'Saving…' : 'Save schedule'}
               </button>
@@ -589,14 +589,14 @@ export default function Settings() {
           )}
 
           {schedule.mode === 'manual' && (
-            <p className="text-xs text-petal-dim">
+            <p className="text-xs text-muted">
               Manual mode — control Sheuli from the master switch on the Overview page, or with /on and /off in
               your own WhatsApp chat.
             </p>
           )}
 
           {scheduleSavedAt && (
-            <p className="text-xs text-petal-dim">Schedule saved at {scheduleSavedAt.toLocaleTimeString()}</p>
+            <p className="text-xs text-muted">Schedule saved at {scheduleSavedAt.toLocaleTimeString()}</p>
           )}
         </div>
       </Section>
@@ -605,7 +605,7 @@ export default function Settings() {
       <Section title="Rate limit" description="Caps how many replies Sheuli sends to the same contact per hour.">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-petal">Enable rate limit</p>
+            <p className="text-sm text-ink">Enable rate limit</p>
             <Toggle checked={settings.rateLimitPerHour > 0} onChange={toggleRateLimit} />
           </div>
 
@@ -621,21 +621,21 @@ export default function Settings() {
                     setRateLimitDraft(e.target.value);
                     setRateLimitError('');
                   }}
-                  className="w-24 rounded-lg border border-white/10 bg-night-500/80 px-3 py-2 text-petal outline-none"
+                  className="w-24 rounded-lg border border-line bg-soft px-3 py-2 text-ink outline-none"
                 />
-                <span className="text-xs text-petal-dim">max replies per contact / hour</span>
+                <span className="text-xs text-muted">max replies per contact / hour</span>
                 <button
                   onClick={saveRateLimit}
                   disabled={saving}
-                  className="rounded-xl bg-sheuli px-4 py-2 text-sm font-semibold text-night-900 shadow-glow-sm transition hover:bg-sheuli-light disabled:opacity-50"
+                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-glow-sm transition hover:bg-accent-hover disabled:opacity-50"
                 >
                   {saving ? 'Saving…' : 'Save limit'}
                 </button>
               </div>
-              {rateLimitError && <p className="text-sm text-red-400">{rateLimitError}</p>}
+              {rateLimitError && <p className="text-sm text-red-700 dark:text-red-300">{rateLimitError}</p>}
             </div>
           ) : (
-            <p className="text-xs text-yellow-300/90">
+            <p className="text-xs text-yellow-700 dark:text-yellow-300">
               ⚠️ Unlimited mode: Sheuli will reply to every message. This may increase API cost — the daily cost
               guard still protects you.
             </p>
@@ -647,7 +647,7 @@ export default function Settings() {
         <select
           value={settings.model}
           onChange={(e) => save({ model: e.target.value })}
-          className="rounded-lg border border-white/10 bg-night-500/80 px-3 py-2 text-petal outline-none"
+          className="rounded-lg border border-line bg-soft px-3 py-2 text-ink outline-none"
         >
           {MODEL_OPTIONS.map((m) => (
             <option key={m} value={m}>
@@ -662,24 +662,24 @@ export default function Settings() {
         description="Once today's estimated OpenAI cost hits this limit, Sheuli pauses auto-replies until midnight."
       >
         <div className="flex items-center gap-3">
-          <span className="text-petal-dim">$</span>
+          <span className="text-muted">$</span>
           <input
             type="number"
             min="0.01"
             step="0.01"
             value={settings.costLimitDaily}
             onChange={(e) => patch({ costLimitDaily: e.target.value })}
-            className="w-32 rounded-lg border border-white/10 bg-night-500/80 px-3 py-2 text-petal outline-none"
+            className="w-32 rounded-lg border border-line bg-soft px-3 py-2 text-ink outline-none"
           />
           <button
             onClick={() => save({ costLimitDaily: Number(settings.costLimitDaily) })}
             disabled={saving}
-            className="rounded-xl bg-sheuli px-4 py-2 text-sm font-semibold text-night-900 shadow-glow-sm transition hover:bg-sheuli-light disabled:opacity-50"
+            className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-glow-sm transition hover:bg-accent-hover disabled:opacity-50"
           >
             {saving ? 'Saving…' : 'Save limit'}
           </button>
         </div>
-        <p className="mt-2 text-xs text-petal-dim">Default: $0.50/day. Resets at local midnight ({schedule.timezone}).</p>
+        <p className="mt-2 text-xs text-muted">Default: $0.50/day. Resets at local midnight ({schedule.timezone}).</p>
       </Section>
 
       <Section
@@ -688,29 +688,29 @@ export default function Settings() {
       >
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-petal">Enable daily summary</p>
+            <p className="text-sm text-ink">Enable daily summary</p>
             <Toggle
               checked={Boolean(settings.dailySummaryEnabled)}
               onChange={() => save({ dailySummaryEnabled: !settings.dailySummaryEnabled })}
             />
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-petal-dim">
+          <label className="flex items-center gap-2 text-sm text-muted">
             Send at
             <input
               type="time"
               value={settings.dailySummaryTime}
               onChange={(e) => patch({ dailySummaryTime: e.target.value })}
               onBlur={() => save({ dailySummaryTime: settings.dailySummaryTime })}
-              className="rounded-lg border border-white/10 bg-night-500/80 px-3 py-1.5 text-petal outline-none"
+              className="rounded-lg border border-line bg-soft px-3 py-1.5 text-ink outline-none"
             />
-            <span className="text-petal-dim/70">({schedule.timezone})</span>
+            <span className="text-muted/70">({schedule.timezone})</span>
           </label>
 
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-petal">Skip if no messages</p>
-              <p className="text-xs text-petal-dim">When on, sends nothing instead of the "no messages" note.</p>
+              <p className="text-sm text-ink">Skip if no messages</p>
+              <p className="text-xs text-muted">When on, sends nothing instead of the "no messages" note.</p>
             </div>
             <Toggle
               checked={Boolean(settings.dailySummarySkipIfEmpty)}
@@ -718,44 +718,44 @@ export default function Settings() {
             />
           </div>
 
-          <p className="text-xs text-petal-dim">
-            You can also request one anytime by sending <span className="font-mono text-petal">/summary</span> to your own
+          <p className="text-xs text-muted">
+            You can also request one anytime by sending <span className="font-mono text-ink">/summary</span> to your own
             "Message Yourself" chat. Past summaries are on the Logs page.
           </p>
         </div>
       </Section>
 
 
-      {savedAt && <p className="text-xs text-petal-dim">Saved at {savedAt.toLocaleTimeString()}</p>}
+      {savedAt && <p className="text-xs text-muted">Saved at {savedAt.toLocaleTimeString()}</p>}
 
       {showLogoutModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-night-400 p-6 shadow-2xl backdrop-blur-xl">
-            <h3 className="text-lg font-bold text-petal">Logout WhatsApp?</h3>
-            <p className="mt-3 text-sm leading-relaxed text-petal-dim">
+          <div className="w-full max-w-md rounded-2xl border border-line bg-card p-6 shadow-2xl shadow-card">
+            <h3 className="text-lg font-bold text-ink">Logout WhatsApp?</h3>
+            <p className="mt-3 text-sm leading-relaxed text-muted">
               This will unlink the current WhatsApp account ({waInfo?.number ? `+${waInfo.number}` : 'the currently linked account'}). Sheuli will stop replying until you scan the QR code with an account. This does NOT delete your chat history or settings.
             </p>
             
-            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-night-500/50 p-3.5 transition hover:border-white/20">
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-soft p-3.5 transition hover:border-accent/40">
               <input
                 type="checkbox"
                 checked={clearHistoryCheckbox}
                 onChange={(e) => setClearHistoryCheckbox(e.target.checked)}
                 disabled={loggingOut}
-                className="mt-0.5 h-4 w-4 rounded border-white/20 bg-night-500 text-sheuli accent-sheuli focus:ring-0"
+                className="mt-0.5 h-4 w-4 rounded border-line bg-soft text-accent accent-accent focus:ring-0"
               />
-              <span className="text-xs font-medium text-petal">
+              <span className="text-xs font-medium text-ink">
                 Also clear all chat history and conversation memory
               </span>
             </label>
 
-            {logoutError && <p className="mt-3 text-xs text-red-400">{logoutError}</p>}
+            {logoutError && <p className="mt-3 text-xs text-red-700 dark:text-red-300">{logoutError}</p>}
 
             <div className="mt-6 flex items-center justify-end gap-3">
               <button
                 onClick={() => !loggingOut && setShowLogoutModal(false)}
                 disabled={loggingOut}
-                className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-petal-dim transition hover:bg-white/5 hover:text-petal disabled:opacity-50"
+                className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted transition hover:bg-soft hover:text-ink disabled:opacity-50"
               >
                 Cancel
               </button>

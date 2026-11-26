@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import Logo from './Logo.jsx';
+import ThemeToggle from './ThemeToggle.jsx';
 import useAuth from '../hooks/useAuth.js';
 import getSocket from '../lib/socket.js';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Overview', icon: '🌸', end: true },
-  { to: '/messages', label: 'Live Messages', icon: '💬' },
-  { to: '/contacts', label: 'Contacts', icon: '👥' },
-  { to: '/settings', label: 'Settings', icon: '⚙️' },
-  { to: '/logs', label: 'Logs', icon: '📜' }
+  { to: '/', label: 'Overview', short: 'Home', icon: '🌸', end: true },
+  { to: '/messages', label: 'Live Messages', short: 'Chats', icon: '💬' },
+  { to: '/contacts', label: 'Contacts', short: 'Contacts', icon: '👥' },
+  { to: '/settings', label: 'Settings', short: 'Settings', icon: '⚙️' },
+  { to: '/logs', label: 'Logs', short: 'Logs', icon: '📜' }
 ];
 
 // FIX 5: small live indicator for the dashboard's own WebSocket connection —
@@ -36,14 +37,13 @@ function SocketStatusDot() {
 
   return (
     <span
-      className={`h-2 w-2 shrink-0 rounded-full ${connected ? 'bg-emerald-400' : 'animate-pulse bg-red-400'}`}
+      className={`h-2 w-2 shrink-0 rounded-full ${connected ? 'bg-emerald-500' : 'animate-pulse bg-red-500'}`}
       title={connected ? 'Live connection active' : 'Live connection lost — reconnecting…'}
     />
   );
 }
 
 export default function Layout({ children }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
   const { logout } = useAuth();
   const navigate = useNavigate();
 
@@ -52,89 +52,74 @@ export default function Layout({ children }) {
     navigate('/login');
   };
 
-  const navLinkClass = ({ isActive }) =>
-    `flex items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
-      isActive
-        ? 'bg-sheuli/15 text-sheuli-light shadow-glow-sm'
-        : 'text-petal-dim hover:bg-white/5 hover:text-petal'
-    }`;
-
   return (
-    <div className="flex min-h-screen">
-      {/* Sidebar (desktop) - Sticky so it stays locked during scroll */}
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col justify-between border-r border-white/5 bg-night-400/60 px-4 py-6 backdrop-blur-xl lg:flex overflow-y-auto">
-        <div className="flex flex-col">
-          <div className="mb-8 flex items-center gap-3 px-2">
-            <Logo size={38} />
-            <div className="flex-1">
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-40 border-b border-line bg-card/90 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+          <div className="flex items-center gap-2.5">
+            <Logo size={36} />
+            <div>
               <div className="flex items-center gap-1.5">
-                <p className="text-base font-bold tracking-tight text-petal">Sheuli</p>
+                <p className="text-lg font-extrabold leading-none tracking-tight text-brand">Sheuli</p>
                 <SocketStatusDot />
               </div>
-              <p className="text-[11px] text-petal-dim">She blooms while you sleep.</p>
+              <p className="mt-1 hidden text-[11px] leading-none text-muted sm:block">She blooms while you sleep.</p>
             </div>
           </div>
-          <nav className="flex flex-1 flex-col gap-1">
-            {NAV_ITEMS.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>
-                <span className="text-lg leading-none">{item.icon}</span>
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
-        <button
-          onClick={handleLogout}
-          className="mt-6 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-petal-dim transition-colors hover:border-sheuli/40 hover:text-sheuli-light shrink-0"
-        >
-          Log out
-        </button>
-      </aside>
 
-      {/* Main content container */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile top bar */}
-        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-white/5 bg-night-400/90 px-4 py-3 backdrop-blur-xl lg:hidden">
-          <div className="flex items-center gap-2">
-            <Logo size={30} />
-            <span className="font-bold text-petal">Sheuli</span>
-            <SocketStatusDot />
-          </div>
-          <button
-            onClick={() => setMobileOpen((v) => !v)}
-            className="rounded-lg border border-white/10 px-3 py-1.5 text-petal-dim"
-          >
-            {mobileOpen ? '✕' : '☰'}
-          </button>
-        </header>
-
-        {mobileOpen && (
-          <nav className="flex flex-col gap-1 border-b border-white/5 bg-night-400/95 px-4 py-3 lg:hidden">
+          <nav className="hidden items-center gap-1 md:flex">
             {NAV_ITEMS.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
-                className={navLinkClass}
-                onClick={() => setMobileOpen(false)}
+                className={({ isActive }) =>
+                  `whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition lg:px-4 ${
+                    isActive ? 'bg-accent/10 text-accent-strong' : 'text-muted hover:bg-soft hover:text-ink'
+                  }`
+                }
               >
-                <span className="text-lg leading-none">{item.icon}</span>
                 {item.label}
               </NavLink>
             ))}
+          </nav>
+
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
             <button
               onClick={handleLogout}
-              className="mt-2 rounded-xl border border-white/10 px-4 py-2.5 text-left text-sm font-medium text-petal-dim hover:border-sheuli/40 hover:text-sheuli-light"
+              className="h-10 rounded-full bg-accent px-4 text-sm font-bold text-white shadow-glow-sm transition hover:bg-accent-hover"
             >
               Log out
             </button>
-          </nav>
-        )}
+          </div>
+        </div>
+      </header>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
-          <div className="mx-auto max-w-6xl">{children}</div>
-        </main>
-      </div>
+      {/* Bottom padding keeps content clear of the phone tab bar. */}
+      <main className="flex-1 px-4 pb-28 pt-5 sm:px-6 md:pb-12 md:pt-8">
+        <div className="mx-auto max-w-6xl">{children}</div>
+      </main>
+
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
+        {NAV_ITEMS.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            className={({ isActive }) =>
+              `flex flex-col items-center gap-1 py-2 text-[11px] font-semibold ${
+                isActive ? 'text-accent-strong' : 'text-muted'
+              }`
+            }
+          >
+            <span className="text-xl leading-none" aria-hidden="true">
+              {item.icon}
+            </span>
+            {item.short}
+          </NavLink>
+        ))}
+      </nav>
     </div>
   );
 }

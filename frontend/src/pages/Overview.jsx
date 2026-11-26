@@ -34,15 +34,55 @@ function getStatusDisplay(status, percent, switchingAccount, sessionRecoveryFail
   return STATUS_LABEL[status] || STATUS_LABEL.initializing;
 }
 
-function StatCard({ label, value, hint }) {
+function StatCard({ icon, label, value, hint }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-night-400/50 p-5 backdrop-blur-xl">
-      <p className="text-xs uppercase tracking-wide text-petal-dim">{label}</p>
-      <p className="mt-2 text-3xl font-bold text-petal">{value}</p>
-      {hint && <p className="mt-1 text-xs text-petal-dim">{hint}</p>}
+    <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
+      <p className="flex items-center gap-2 text-xs font-semibold text-white/70">
+        <span aria-hidden="true">{icon}</span>
+        {label}
+      </p>
+      <p className="mt-2 break-all text-2xl font-extrabold sm:text-3xl">{value}</p>
+      {hint && <p className="mt-1 text-xs text-white/60">{hint}</p>}
     </div>
   );
 }
+
+const MODE_OPTIONS = [
+  { id: 'normal', label: 'Normal 🌸' },
+  { id: 'sleep', label: 'Sleep 🌙' },
+  { id: 'home', label: 'At Home 🏡' },
+  { id: 'commute', label: 'Commute 🚌' },
+  { id: 'shopping', label: 'Market 🛒' },
+  { id: 'adda', label: 'Adda ☕' },
+  { id: 'movie', label: 'Movie 🎬' },
+  { id: 'barber', label: 'Salon 💈' },
+  { id: 'errands', label: 'Errands 🏃' },
+  { id: 'lowbat', label: 'Low Bat 🪫' },
+  { id: 'medical', label: 'Medical 🏥' },
+  { id: 'rainy', label: 'Rainy/Jam 🌧️' },
+  { id: 'party', label: 'Party 🎉' },
+  { id: 'teabreak', label: 'Tea Break 🫖' },
+  { id: 'chores', label: 'Chores 🧹' },
+  { id: 'oncall', label: 'On Call 📞' },
+  { id: 'charging', label: 'Charging 🔌' },
+  { id: 'reading', label: 'Reading 📖' },
+  { id: 'outdoors', label: 'Outdoors 🏕️' },
+  { id: 'thinking', label: 'Thinking 🧠' },
+  { id: 'class', label: 'Class 🏫' },
+  { id: 'study', label: 'Study 📚' },
+  { id: 'exam', label: 'Exam 📝' },
+  { id: 'lab', label: 'Lab 🔬' },
+  { id: 'meeting', label: 'Meeting 💼' },
+  { id: 'coding', label: 'Coding 💻' },
+  { id: 'prayer', label: 'Prayer 🕌' },
+  { id: 'dining', label: 'Dining 🍽️' },
+  { id: 'resting', label: 'Resting 🤒' },
+  { id: 'driving', label: 'Driving 🚗' },
+  { id: 'workout', label: 'Gym 🏋️' },
+  { id: 'gaming', label: 'Gaming 🎮' },
+  { id: 'travel', label: 'Travel ✈️' },
+  { id: 'dnd', label: 'DND 🛑' }
+];
 
 function formatInZone(iso, timezone) {
   if (!iso) return null;
@@ -208,184 +248,144 @@ export default function Overview() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-petal">Overview</h1>
-        <p className="text-sm text-petal-dim">A quick look at how Sheuli is doing right now.</p>
-      </div>
-
+    <div className="flex flex-col gap-6 sm:gap-8">
       {stats.costLimitReached && (
-        <div className="rounded-2xl border border-yellow-400/30 bg-yellow-400/10 px-4 py-3 text-sm text-yellow-200">
+        <div className="rounded-2xl border border-yellow-500/40 bg-yellow-400/10 px-4 py-3 text-sm text-yellow-800 dark:text-yellow-200">
           ⚠️ Today's API cost limit (${stats.costLimitDaily.toFixed(2)}) has been reached — auto-replies are paused until
           local midnight. Raise the limit in Settings if you need Sheuli back sooner.
         </div>
       )}
 
-      {/* FIX 4: impossible-to-miss reminder after a fresh deploy — a new
-          database seeds autoReplyEnabled=false by default, so Sheuli won't
-          reply to anyone until this is flipped on. */}
-      {!isScheduleMode && !autoReplyEnabled && (
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-sheuli/40 bg-sheuli/10 px-4 py-3 text-sm text-sheuli-light">
-          <span>🌙 Sheuli is OFF — turn her on to start replying.</span>
-          <button
-            onClick={toggleAutoReply}
-            disabled={toggling}
-            className="shrink-0 rounded-lg bg-sheuli px-3 py-1.5 text-xs font-semibold text-night-900 transition hover:bg-sheuli-light disabled:opacity-50"
-          >
-            {toggling ? 'Turning on…' : 'Turn on'}
-          </button>
-        </div>
-      )}
-
-      {/* Personal & Student Mode Selector Bar */}
-      <div className="rounded-2xl border border-white/10 bg-night-400/50 p-4 backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <p className="text-xs uppercase tracking-wide text-petal-dim">Personal Active Mode (34 Personal & Life Modes)</p>
-          <span className="text-xs text-sheuli-light font-medium bg-sheuli/10 px-2.5 py-0.5 rounded-full">
-            Active: {activeMode.toUpperCase()}
+      {/* Hero with the master switch */}
+      <section className="hero grid gap-6 p-5 sm:p-8 lg:grid-cols-[1.4fr_1fr] lg:items-center">
+        <div>
+          <span className="inline-block rounded-full border border-line bg-card px-3 py-1 text-xs font-semibold text-muted">
+            Personal WhatsApp assistant
           </span>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
-          {[
-            { id: 'normal', label: 'Normal 🌸' },
-            { id: 'sleep', label: 'Sleep 🌙' },
-            { id: 'home', label: 'At Home 🏡' },
-            { id: 'commute', label: 'Commute 🚌' },
-            { id: 'shopping', label: 'Market 🛒' },
-            { id: 'adda', label: 'Adda ☕' },
-            { id: 'movie', label: 'Movie 🎬' },
-            { id: 'barber', label: 'Salon 💈' },
-            { id: 'errands', label: 'Errands 🏃' },
-            { id: 'lowbat', label: 'Low Bat 🪫' },
-            { id: 'medical', label: 'Medical 🏥' },
-            { id: 'rainy', label: 'Rainy/Jam 🌧️' },
-            { id: 'party', label: 'Party 🎉' },
-            { id: 'teabreak', label: 'Tea Break 🫖' },
-            { id: 'chores', label: 'Chores 🧹' },
-            { id: 'oncall', label: 'On Call 📞' },
-            { id: 'charging', label: 'Charging 🔌' },
-            { id: 'reading', label: 'Reading 📖' },
-            { id: 'outdoors', label: 'Outdoors 🏕️' },
-            { id: 'thinking', label: 'Thinking 🧠' },
-            { id: 'class', label: 'Class 🏫' },
-            { id: 'study', label: 'Study 📚' },
-            { id: 'exam', label: 'Exam 📝' },
-            { id: 'lab', label: 'Lab 🔬' },
-            { id: 'meeting', label: 'Meeting 💼' },
-            { id: 'coding', label: 'Coding 💻' },
-            { id: 'prayer', label: 'Prayer 🕌' },
-            { id: 'dining', label: 'Dining 🍽️' },
-            { id: 'resting', label: 'Resting 🤒' },
-            { id: 'driving', label: 'Driving 🚗' },
-            { id: 'workout', label: 'Gym 🏋️' },
-            { id: 'gaming', label: 'Gaming 🎮' },
-            { id: 'travel', label: 'Travel ✈️' },
-            { id: 'dnd', label: 'DND 🛑' }
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => changeMode(item.id)}
-              className={`rounded-xl px-2 py-2 text-xs font-semibold transition-all ${
-                activeMode === item.id
-                  ? 'bg-sheuli text-night-900 shadow-glow scale-[1.02]'
-                  : 'bg-white/5 text-petal-dim hover:bg-white/10 hover:text-petal'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Connection status */}
-        <div className="rounded-2xl border border-white/10 bg-night-400/50 p-6 backdrop-blur-xl">
-          <div className="flex items-center gap-2">
-            <span className={`h-2.5 w-2.5 rounded-full ${statusInfo.color} animate-pulse`} />
-            <p className="font-semibold text-petal">{statusInfo.text}</p>
-          </div>
-
-          {connection === 'qr' && qr && (
-            <div className="mt-4 flex flex-col items-center gap-2">
-              {sessionRecoveryFailed && (
-                <p className="text-center text-sm font-medium text-red-300">
-                  Session couldn't be restored — scan the QR below to reconnect.
-                </p>
-              )}
-              {pairingRejectedHint && (
-                <p className="max-w-xs text-center text-xs font-medium text-yellow-300">
-                  ⚠️ Last pairing was accepted, then instantly rejected by WhatsApp — likely a web-version/library
-                  incompatibility, not an account issue. Try updating whatsapp-web.js, or set WA_WEB_VERSION as a
-                  stopgap.
-                </p>
-              )}
-              <div className="rounded-xl bg-white p-3 shadow-glow">
-                <img src={qr} alt="Scan this QR code with WhatsApp" className="h-48 w-48" />
-              </div>
-              <p className="text-center text-xs text-petal-dim">
-                Open WhatsApp → Linked Devices → Link a Device, then scan this code.
-              </p>
-              <p className="text-center text-[11px] text-petal-dim/80">
-                QR refreshes automatically (~every 60s).
-              </p>
-            </div>
-          )}
-
-          {(connection === 'connected' || connection === 'ready') && (
-            <p className="mt-3 text-sm text-petal-dim">
-              WhatsApp is linked{info?.number ? ` (+${info.number})` : ''}{info?.name ? ` as ${info.name}` : ''}. Sheuli can now watch your messages.
-            </p>
-          )}
+          <h1 className="mt-4 text-3xl font-extrabold leading-tight tracking-tight text-brand sm:text-4xl lg:text-5xl">
+            Replies for you, <span className="text-accent">while you rest</span>
+          </h1>
+          <p className="mt-3 max-w-xl text-sm text-muted sm:text-base">
+            Sheuli watches your personal chats and answers politely, based on what you are doing right now.
+          </p>
         </div>
 
-        {/* Master toggle / schedule status */}
-        <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-night-400/50 p-6 backdrop-blur-xl">
-          {active && (
-            <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-sheuli/20 blur-3xl animate-float" />
-          )}
-          <p className="text-xs uppercase tracking-wide text-petal-dim">
+        <div className="card p-5">
+          <p className="text-xs font-bold uppercase tracking-wide text-muted">
             {isScheduleMode ? 'Schedule' : 'Master switch'}
           </p>
-          <div className="mt-3 flex items-center justify-between">
-            <div>
-              <p className={`text-xl font-bold ${active ? 'text-sheuli-light' : 'text-petal'}`}>
+          <div className="mt-3 flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className={`text-xl font-extrabold ${active ? 'text-accent-strong' : 'text-brand'}`}>
                 {active ? 'Sheuli is awake 🌸' : 'Sheuli is resting 🌙'}
               </p>
-              <p className="mt-1 text-xs text-petal-dim">{subtitle}</p>
-              {isScheduleMode && (
-                <p className="mt-1 text-xs text-petal-dim/70">Schedule mode is controlling Sheuli right now.</p>
-              )}
+              <p className="mt-1 text-xs text-muted">{subtitle}</p>
+              {isScheduleMode && <p className="mt-1 text-xs text-muted">Schedule mode is in control right now.</p>}
             </div>
             <button
               onClick={toggleAutoReply}
               disabled={toggling || isScheduleMode}
               aria-pressed={active}
+              aria-label="Auto-reply"
               title={isScheduleMode ? 'Switch to manual mode in Settings to control this toggle' : undefined}
-              className={`relative h-8 w-16 shrink-0 rounded-full transition-colors duration-300 ${
-                active ? 'bg-sheuli shadow-glow' : 'bg-white/10'
-              } ${isScheduleMode ? 'cursor-not-allowed opacity-50' : ''} disabled:opacity-50`}
+              className={`relative h-8 w-16 shrink-0 rounded-full transition-colors duration-300 disabled:cursor-not-allowed disabled:opacity-50 ${
+                active ? 'bg-accent shadow-glow' : 'bg-line'
+              }`}
             >
               <span
-                className={`absolute top-1 h-6 w-6 rounded-full bg-petal shadow transition-transform duration-300 ${
+                className={`absolute left-0 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform duration-300 ${
                   active ? 'translate-x-9' : 'translate-x-1'
-                } ${active ? 'animate-bloom' : ''}`}
+                }`}
               />
             </button>
           </div>
-        </div>
-      </div>
 
-      {/* Live stats */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Messages today" value={stats.messagesReceived} />
-        <StatCard label="Replies sent" value={stats.repliesSent} />
-        <StatCard label="Active chats" value={stats.activeConversations} />
-        <StatCard
-          label="Est. API cost"
-          value={`$${stats.estimatedCostToday.toFixed(4)}`}
-          hint={`of $${stats.costLimitDaily.toFixed(2)} daily limit`}
-        />
-      </div>
+          <div className="mt-4 border-t border-line pt-4">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusInfo.color} animate-pulse`} />
+              <p className="text-sm font-semibold text-ink">{statusInfo.text}</p>
+            </div>
+            {(connection === 'connected' || connection === 'ready') && (
+              <p className="mt-1 text-xs text-muted">
+                WhatsApp is linked{info?.number ? ` (+${info.number})` : ''}
+                {info?.name ? ` as ${info.name}` : ''}.
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {connection === 'qr' && qr && (
+        <section className="card flex flex-col items-center gap-3 p-5 text-center">
+          <h2 className="section-title">Link your WhatsApp</h2>
+          {sessionRecoveryFailed && (
+            <p className="text-sm font-medium text-red-700 dark:text-red-300">
+              Session couldn't be restored — scan the QR below to reconnect.
+            </p>
+          )}
+          {pairingRejectedHint && (
+            <p className="max-w-xs text-xs font-medium text-yellow-700 dark:text-yellow-300">
+              ⚠️ Last pairing was accepted, then instantly rejected by WhatsApp — likely a web-version/library
+              incompatibility, not an account issue. Try updating whatsapp-web.js, or set WA_WEB_VERSION as a stopgap.
+            </p>
+          )}
+          <div className="rounded-2xl border border-line bg-white p-3 shadow-card">
+            <img src={qr} alt="Scan this QR code with WhatsApp" className="h-52 w-52 max-w-full" />
+          </div>
+          <p className="text-xs text-muted">Open WhatsApp → Linked Devices → Link a Device, then scan this code.</p>
+          <p className="text-xs text-muted">QR refreshes automatically (~every 60s).</p>
+        </section>
+      )}
+
+      {/* Today's numbers */}
+      <section className="band p-5 sm:p-8">
+        <h2 className="text-xl font-extrabold">Today at a glance</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard icon="💬" label="Messages" value={stats.messagesReceived} />
+          <StatCard icon="↩️" label="Replies sent" value={stats.repliesSent} />
+          <StatCard icon="👥" label="Active chats" value={stats.activeConversations} />
+          <StatCard
+            icon="💵"
+            label="API cost"
+            value={`$${stats.estimatedCostToday.toFixed(4)}`}
+            hint={`of $${stats.costLimitDaily.toFixed(2)} daily limit`}
+          />
+        </div>
+      </section>
+
+      {/* Mode selector */}
+      <section>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="section-title">Personal modes</h2>
+          <span className="rounded-full bg-accent/10 px-3 py-1 text-xs font-bold text-accent-strong">
+            Active: {activeMode.toUpperCase()}
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 md:grid-cols-6 lg:grid-cols-8">
+          {MODE_OPTIONS.map((item) => {
+            // "Sleep 🌙" -> name and icon, shown stacked.
+            const cut = item.label.lastIndexOf(' ');
+            const selected = activeMode === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => changeMode(item.id)}
+                aria-pressed={selected}
+                className={`flex min-h-[4.75rem] flex-col items-center justify-center gap-1 rounded-2xl border px-1 py-2 text-center text-xs font-semibold transition ${
+                  selected
+                    ? 'border-accent bg-accent text-white shadow-glow'
+                    : 'border-line bg-card text-ink hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-card'
+                }`}
+              >
+                <span className="text-xl leading-none" aria-hidden="true">
+                  {item.label.slice(cut + 1)}
+                </span>
+                {item.label.slice(0, cut)}
+              </button>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }

@@ -25,6 +25,21 @@ function detectLanguageHint(text) {
   return 'english';
 }
 
+// Used when OpenAI cannot be reached, so the reply still reflects the active
+// mode and the sender's language instead of one fixed line.
+export function buildFallbackMessage(activity, languageHint) {
+  if (activity?.type !== 'mode') return config.defaults.fallbackMessage;
+  const mode = activity.info?.name || activity.title;
+  const owner = config.ownerName;
+  if (languageHint === 'english') {
+    return `${owner} is not available right now (${mode}) and will reply later. — Sheuli 🌸`;
+  }
+  if (languageHint === 'banglish') {
+    return `${owner} ekhon available nei (${mode}), pore reply korbe. — Sheuli 🌸`;
+  }
+  return `${owner} এখন available নেই (${mode}), পরে reply করবে। — Sheuli 🌸`;
+}
+
 function buildMessages({ systemPrompt, history, incomingBody, isFirstReply, languageHint, activityContext, modeContext, scheduleContext }) {
   const messages = [{ role: 'system', content: systemPrompt }];
 
@@ -83,6 +98,7 @@ export async function generateReply({
   incomingBody,
   history = [],
   isFirstReply = history.length === 0,
+  currentActivity = null,
   activityContext = null,
   modeContext = null,
   scheduleContext = null
@@ -126,7 +142,7 @@ export async function generateReply({
     logger.error({ err: err.message, contactId }, 'OpenAI request failed, using fallback message');
 
     return {
-      reply: config.defaults.fallbackMessage,
+      reply: buildFallbackMessage(currentActivity, languageHint),
       promptTokens: 0,
       completionTokens: 0,
       fallback: true

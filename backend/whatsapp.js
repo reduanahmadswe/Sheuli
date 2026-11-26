@@ -6,7 +6,7 @@ import pkg from 'whatsapp-web.js';
 import config from './config.js';
 import logger from './logger.js';
 import { generateReply } from './ai.js';
-import { classifyChatId } from './chatFilter.js';
+import { classifyChatId, describeContent } from './chatFilter.js';
 import { isSheuliActive } from './schedule.js';
 import { isCostLimitReached, recordApiCost } from './costGuard.js';
 import { runDailySummary } from './summary.js';
@@ -99,10 +99,11 @@ function waitForFreshQr(timeoutMs) {
 }
 
 // In-memory de-dup cache (mirrors the processed_messages table for fast-path checks)
-// and a per-contact busy lock so a second incoming message can't trigger a second
-// reply while Sheuli is still generating/sending one for that contact.
+// and a per-contact busy lock. Messages arriving while a reply is in progress
+// wait in pendingJobs and are answered together right after it.
 const processedMessageIds = new Set();
 const busyContacts = new Set();
+const pendingJobs = new Map();
 
 // FEATURE 1: tracks whether the last connection event was a disconnect/auth
 // failure, so a subsequent 'ready' event knows to send a "back online"
@@ -345,6 +346,14 @@ async function handleIncomingMessage(message) {
     `Incoming: ${chatTypeLabel(rawChatId)} from ${rawNumber || 'unknown'} — ${(message.body || '').slice(0, 30)}`
   );
 
+  // System events carry nothing to answer. Checked before de-dup so a message
+  // that shows up again with real content is not thrown away.
+  const content = describeContent(message);
+  if (content === null) {
+    logger.debug({ type: message.type }, 'Ignoring non-content message');
+    return;
+  }
+
   // De-duplicate: whatsapp-web.js can occasionally re-emit the same event
   // (e.g. around a reconnect). Record the ID before doing any other work so a
   // duplicate event is dropped immediately instead of triggering a second reply.
@@ -439,7 +448,7 @@ async function handleIncomingMessage(message) {
   upsertContact({ id: chatId, name: contactName, number: contactNumber, isGroup: false });
   touchContact(chatId);
 
-  let incomingBody = (message.body || '').trim();
+  let incomingBody = content;
   let isVoice = false;
   let voiceTranscript = null;
 
@@ -484,6 +493,75 @@ async function handleIncomingMessage(message) {
     createdAt: new Date().toISOString()
   });
 
+  await enqueueReply({
+    message,
+    chat,
+    chatId,
+    contactName,
+    candidateJids,
+    incomingBody,
+    isVoice,
+    history: conversationHistory,
+    priorContact
+  });
+}
+
+async function enqueueReply(job) {
+  const { chatId } = job;
+  if (busyContacts.has(chatId)) {
+    pendingJobs.set(chatId, [...(pendingJobs.get(chatId) || []), job]);
+    return;
+  }
+  busyContacts.add(chatId);
+  try {
+    let current = job;
+    while (current && !switchingAccount) {
+      await replyToContact(current);
+      current = takePendingJob(chatId);
+    }
+  } finally {
+    busyContacts.delete(chatId);
+    pendingJobs.delete(chatId);
+  }
+}
+
+// Merges everything that queued up into one job, answered with a single reply.
+function takePendingJob(chatId) {
+  const jobs = pendingJobs.get(chatId);
+  if (!jobs?.length) return null;
+  pendingJobs.delete(chatId);
+
+  // The queued messages are already logged, so drop them from the history or
+  // the model would see each of them twice.
+  const history = getRecentConversation(chatId, config.defaults.memoryLength);
+  let toDrop = jobs.length;
+  for (let i = history.length - 1; i >= 0 && toDrop > 0; i -= 1) {
+    if (history[i].direction === 'in') {
+      history.splice(i, 1);
+      toDrop -= 1;
+    }
+  }
+
+  return {
+    ...jobs[jobs.length - 1],
+    incomingBody: jobs.map((j) => j.incomingBody).join('\n'),
+    isVoice: jobs.some((j) => j.isVoice),
+    history,
+    priorContact: getContact(chatId)
+  };
+}
+
+async function replyToContact({
+  message,
+  chat,
+  chatId,
+  contactName,
+  candidateJids,
+  incomingBody,
+  isVoice,
+  history,
+  priorContact
+}) {
   const settings = getAllSettings();
   const contact = getContact(chatId);
 
@@ -525,13 +603,6 @@ async function handleIncomingMessage(message) {
     return;
   }
 
-  if (busyContacts.has(chatId)) {
-    logger.debug({ chatId }, 'Contact is already being processed — dropping message to avoid a duplicate reply');
-    recordSkip('skipped');
-    return;
-  }
-  busyContacts.add(chatId);
-
   const introDue = isIntroDue(priorContact);
 
   // ── FEATURE: Real-time Priority Activity (Calendar -> Mode) ──
@@ -549,7 +620,7 @@ async function handleIncomingMessage(message) {
     const { reply, promptTokens, completionTokens } = await generateReply({
       contactId: chatId,
       incomingBody,
-      history: conversationHistory,
+      history,
       isFirstReply: introDue,
       currentActivity,
       activityContext,
@@ -642,8 +713,6 @@ async function handleIncomingMessage(message) {
   } catch (err) {
     logger.error({ err: err?.message || err, contactId: chatId }, 'Failed to generate/send reply');
     recordSkip('error');
-  } finally {
-    busyContacts.delete(chatId);
   }
 }
 

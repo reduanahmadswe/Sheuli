@@ -22,12 +22,12 @@ function Toggle({ checked, onChange, label }) {
       onClick={onChange}
       aria-pressed={checked}
       className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-        checked ? 'bg-sheuli' : 'bg-white/10'
+        checked ? 'bg-accent' : 'bg-line'
       }`}
       title={label}
     >
       <span
-        className={`absolute top-1 h-4 w-4 rounded-full bg-petal transition-transform ${
+        className={`absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
           checked ? 'translate-x-6' : 'translate-x-1'
         }`}
       />
@@ -80,15 +80,15 @@ export default function Contacts() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-petal">Contacts</h1>
-          <p className="text-sm text-petal-dim">Everyone who has messaged you, and how Sheuli treats them.</p>
+          <h1 className="page-title">Contacts</h1>
+          <p className="text-sm text-muted">Everyone who has messaged you, and how Sheuli treats them.</p>
         </div>
         <button
           onClick={syncContacts}
           disabled={syncing}
-          className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-petal-dim transition-colors hover:border-sheuli/40 hover:text-sheuli-light disabled:opacity-50"
+          className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted transition-colors hover:border-accent/40 hover:text-accent-strong disabled:opacity-50"
         >
           {syncing ? 'Syncing names…' : 'Sync WhatsApp Names'}
         </button>
@@ -98,13 +98,13 @@ export default function Contacts() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search by name or number…"
-        className="w-full max-w-sm rounded-xl border border-white/10 bg-night-400/60 px-4 py-2.5 text-sm text-petal outline-none ring-sheuli/50 focus:ring-2"
+        className="w-full max-w-sm rounded-xl border border-line bg-card px-4 py-2.5 text-sm text-ink outline-none ring-accent/50 focus:ring-2"
       />
 
-      <div className="overflow-x-auto rounded-2xl border border-white/10 bg-night-400/40 backdrop-blur-xl">
-        <table className="w-full min-w-[640px] text-left text-sm">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-card shadow-card">
+        <table className="stack-table w-full text-left text-sm sm:min-w-[640px]">
           <thead>
-            <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-petal-dim">
+            <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
               <th className="px-4 py-3">Contact</th>
               <th className="px-4 py-3">Messages</th>
               <th className="px-4 py-3">Last message</th>
@@ -116,14 +116,16 @@ export default function Contacts() {
               const displayName = getDisplayName(c.name, c.number, c.id);
               const displayNum = formatPhoneNumber(c.number || c.id);
               return (
-                <tr key={c.id} className="border-b border-white/5 last:border-none">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-petal">{displayName}</p>
-                    {displayNum !== displayName && <p className="text-xs text-petal-dim">{displayNum}</p>}
+                <tr key={c.id} className="border-b border-line last:border-none">
+                  <td data-label="Contact" className="px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-ink">{displayName}</p>
+                      {displayNum !== displayName && <p className="text-xs text-muted">{displayNum}</p>}
+                    </div>
                   </td>
-                  <td className="px-4 py-3 text-petal-dim">{c.message_count}</td>
-                  <td className="px-4 py-3 text-petal-dim">{formatDate(c.last_message_at)}</td>
-                  <td className="px-4 py-3">
+                  <td data-label="Messages" className="px-4 py-3 text-muted">{c.message_count}</td>
+                  <td data-label="Last message" className="px-4 py-3 text-muted">{formatDate(c.last_message_at)}</td>
+                  <td data-label="Blacklist" className="px-4 py-3">
                     <Toggle
                       checked={Boolean(c.blacklisted)}
                       onChange={() => updateContact(c.id, { blacklisted: !c.blacklisted })}
@@ -135,7 +137,7 @@ export default function Contacts() {
             })}
             {!loading && contacts.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-petal-dim">
+                <td colSpan={5} className="px-4 py-8 text-center text-muted">
                   No contacts yet.
                 </td>
               </tr>

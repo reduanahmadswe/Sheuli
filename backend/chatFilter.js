@@ -20,4 +20,28 @@ export function isIndividualChatId(chatId) {
   return classifyChatId(chatId) === null;
 }
 
-export default { classifyChatId, isIndividualChatId };
+// Message types a person actually sends. Anything else (encryption notices,
+// business templates, call logs, protocol events…) is WhatsApp's own noise.
+const CONTENT_LABELS = {
+  chat: '',
+  audio: '[Voice Note Received]',
+  ptt: '[Voice Note Received]',
+  image: '[Image]',
+  video: '[Video]',
+  document: '[Document]',
+  sticker: '[Sticker]',
+  location: '[Location]',
+  vcard: '[Contact card]',
+  multi_vcard: '[Contact card]'
+};
+
+// Returns the text to store for a message, or null if it should be ignored.
+export function describeContent({ type = 'chat', body = '' } = {}) {
+  if (!Object.hasOwn(CONTENT_LABELS, type)) return null;
+  const label = CONTENT_LABELS[type];
+  // Location and contact-card bodies are raw data, not something the sender typed.
+  const text = ['location', 'vcard', 'multi_vcard'].includes(type) ? '' : (body || '').trim();
+  return [label, text].filter(Boolean).join(' ') || null;
+}
+
+export default { classifyChatId, isIndividualChatId, describeContent };

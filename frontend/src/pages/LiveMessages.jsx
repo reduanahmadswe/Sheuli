@@ -65,22 +65,22 @@ function ChatListItem({ chat, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 border-b border-white/5 px-4 py-3 text-left transition-colors ${
-        active ? 'bg-sheuli/10' : 'hover:bg-white/5'
+      className={`flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition-colors ${
+        active ? 'bg-accent/10' : 'hover:bg-soft'
       }`}
     >
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-night-300 text-sm font-semibold text-sheuli-light ring-1 ring-white/10">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-soft text-sm font-semibold text-accent-strong ring-1 ring-line">
         {initials(displayName)}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <p className="truncate text-sm font-medium text-petal">{displayName}</p>
-          <span className="shrink-0 text-[11px] text-petal-dim">{formatTime(chat.lastMessageAt)}</span>
+          <p className="truncate text-sm font-medium text-ink">{displayName}</p>
+          <span className="shrink-0 text-[11px] text-muted">{formatTime(chat.lastMessageAt)}</span>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-petal-dim">{preview}</p>
+          <p className="truncate text-xs text-muted">{preview}</p>
           {chat.unreadCount > 0 && (
-            <span className="flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-sheuli px-1.5 text-[11px] font-semibold text-night-900">
+            <span className="flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-white">
               {chat.unreadCount}
             </span>
           )}
@@ -93,11 +93,14 @@ function ChatListItem({ chat, active, onClick }) {
 function MessageBubble({ msg }) {
   const isOut = msg.direction === 'out';
 
+  // Older logs hold empty rows for WhatsApp system events — nothing to show.
+  if (!isOut && !msg.body) return null;
+
   if (isOut && !msg.body) {
     const tag = STATUS_TAG[msg.status] || msg.status;
     return (
       <div className="flex justify-center">
-        <span className="rounded-full bg-white/5 px-3 py-1 text-[11px] text-petal-dim">{tag}</span>
+        <span className="rounded-full bg-soft px-3 py-1 text-[11px] text-muted">{tag}</span>
       </div>
     );
   }
@@ -106,22 +109,22 @@ function MessageBubble({ msg }) {
 
   return (
     <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
-      <div className="flex max-w-[75%] flex-col gap-1">
+      <div className="flex max-w-[85%] flex-col gap-1 break-words sm:max-w-[75%]">
         <div
           className={`rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
             isOut
-              ? 'rounded-br-sm bg-sheuli font-medium text-night-900'
-              : 'rounded-bl-sm border border-white/5 bg-night-300/80 text-petal'
+              ? 'rounded-br-sm bg-accent font-medium text-white'
+              : 'rounded-bl-sm border border-line bg-soft text-ink'
           }`}
         >
           {isVoiceMsg && (
-            <div className="flex items-center gap-1.5 text-xs font-semibold mb-1 text-sheuli-light">
+            <div className="flex items-center gap-1.5 text-xs font-semibold mb-1 opacity-80">
               <span>🎙️ Voice Note</span>
             </div>
           )}
           {msg.body}
         </div>
-        <span className={`px-1 text-[10px] text-petal-dim/70 ${isOut ? 'text-right' : 'text-left'}`}>
+        <span className={`px-1 text-[10px] text-muted/70 ${isOut ? 'text-right' : 'text-left'}`}>
           {formatTime(msg.created_at || msg.createdAt)}
         </span>
       </div>
@@ -132,7 +135,7 @@ function MessageBubble({ msg }) {
 function DateSeparator({ label }) {
   return (
     <div className="flex justify-center py-2">
-      <span className="rounded-full bg-white/5 px-3 py-1 text-[11px] text-petal-dim">{label}</span>
+      <span className="rounded-full bg-soft px-3 py-1 text-[11px] text-muted">{label}</span>
     </div>
   );
 }
@@ -196,7 +199,9 @@ export default function LiveMessages() {
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Scroll only the message list; scrollIntoView would drag the whole page on phones.
+    const list = bottomRef.current?.parentElement;
+    list?.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
   }, [messages.length]);
 
   const openChat = async (contactId) => {
@@ -253,24 +258,24 @@ export default function LiveMessages() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-bold text-petal">Live Messages</h1>
-        <p className="text-sm text-petal-dim">Chat with Sheuli's conversations, one contact at a time.</p>
+        <h1 className="page-title">Live Messages</h1>
+        <p className="text-sm text-muted">Chat with Sheuli's conversations, one contact at a time.</p>
       </div>
 
-      <div className="flex h-[calc(100vh-12rem)] overflow-hidden rounded-2xl border border-white/10 bg-night-400/40 backdrop-blur-xl">
+      <div className="flex h-[calc(100dvh-15rem)] min-h-[22rem] overflow-hidden md:h-[calc(100dvh-13rem)] rounded-2xl border border-line bg-card shadow-card">
         {/* Chat list pane */}
-        <div className={`${selectedId ? 'hidden md:flex' : 'flex'} w-full flex-col md:w-80 md:border-r md:border-white/10`}>
-          <div className="border-b border-white/10 p-3">
+        <div className={`${selectedId ? 'hidden md:flex' : 'flex'} w-full flex-col md:w-80 md:border-r md:border-line`}>
+          <div className="border-b border-line p-3">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search chats…"
-              className="w-full rounded-xl border border-white/10 bg-night-500/80 px-3 py-2 text-sm text-petal outline-none ring-sheuli/50 focus:ring-2"
+              className="w-full rounded-xl border border-line bg-soft px-3 py-2 text-sm text-ink outline-none ring-accent/50 focus:ring-2"
             />
           </div>
           <div className="flex-1 overflow-y-auto">
             {filteredChats.length === 0 && (
-              <p className="p-6 text-center text-sm text-petal-dim">No conversations yet.</p>
+              <p className="p-6 text-center text-sm text-muted">No conversations yet.</p>
             )}
             {filteredChats.map((chat) => (
               <ChatListItem
@@ -288,38 +293,38 @@ export default function LiveMessages() {
           {!selectedChat && (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
               <Logo size={56} />
-              <p className="text-sm text-petal-dim">Select a chat to view the conversation</p>
+              <p className="text-sm text-muted">Select a chat to view the conversation</p>
             </div>
           )}
 
           {selectedChat && (
             <>
-              <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
+              <div className="flex items-center gap-2 border-b border-line px-3 py-3 sm:gap-3 sm:px-4">
                 <button
                   onClick={closeChat}
-                  className="rounded-lg p-1.5 text-petal-dim hover:bg-white/5 hover:text-petal md:hidden"
+                  className="rounded-lg p-1.5 text-muted hover:bg-soft hover:text-ink md:hidden"
                   aria-label="Back to chat list"
                 >
                   ←
                 </button>
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-night-300 text-xs font-semibold text-sheuli-light ring-1 ring-white/10">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-soft text-xs font-semibold text-accent-strong ring-1 ring-line">
                   {initials(getDisplayName(selectedChat.name, selectedChat.number, selectedChat.contactId))}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-petal">
+                  <p className="truncate text-sm font-semibold text-ink">
                     {getDisplayName(selectedChat.name, selectedChat.number, selectedChat.contactId)}
                   </p>
                   {formatPhoneNumber(selectedChat.number || selectedChat.contactId) !== getDisplayName(selectedChat.name, selectedChat.number, selectedChat.contactId) && (
-                    <p className="truncate text-xs text-petal-dim">{formatPhoneNumber(selectedChat.number || selectedChat.contactId)}</p>
+                    <p className="truncate text-xs text-muted">{formatPhoneNumber(selectedChat.number || selectedChat.contactId)}</p>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 flex-col items-stretch gap-1 sm:flex-row sm:items-center sm:gap-2">
                   <button
                     onClick={() => toggleFlag('blacklisted')}
                     className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${
                       selectedChat.blacklisted
-                        ? 'border-red-400/40 bg-red-500/15 text-red-300'
-                        : 'border-white/10 text-petal-dim hover:text-petal'
+                        ? 'border-red-400/40 bg-red-500/15 text-red-700 dark:text-red-300'
+                        : 'border-line text-muted hover:text-ink'
                     }`}
                   >
                     {selectedChat.blacklisted ? 'Blacklisted' : 'Blacklist'}
@@ -327,7 +332,7 @@ export default function LiveMessages() {
                   <button
                     onClick={clearMemory}
                     disabled={clearing}
-                    className="rounded-lg border border-white/10 px-2.5 py-1 text-xs text-petal-dim transition-colors hover:text-petal disabled:opacity-50"
+                    className="rounded-lg border border-line px-2.5 py-1 text-xs text-muted transition-colors hover:text-ink disabled:opacity-50"
                   >
                     {clearing ? 'Clearing…' : 'Clear memory'}
                   </button>
@@ -336,7 +341,7 @@ export default function LiveMessages() {
 
               <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
                 {groupedMessages.length === 0 && (
-                  <p className="mt-10 text-center text-sm text-petal-dim">No messages in this conversation yet.</p>
+                  <p className="mt-10 text-center text-sm text-muted">No messages in this conversation yet.</p>
                 )}
                 {groupedMessages.map((item) =>
                   item.type === 'separator' ? (

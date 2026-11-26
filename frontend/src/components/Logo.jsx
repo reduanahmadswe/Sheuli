@@ -7,7 +7,7 @@ export default function Logo({ size = 40, className = '', animated = false }) {
       xmlns="http://www.w3.org/2000/svg"
       className={`${className} ${animated ? 'animate-bloom' : ''}`}
     >
-      <circle cx="32" cy="32" r="32" fill="#0B1026" />
+      <circle cx="32" cy="32" r="32" style={{ fill: 'rgb(var(--band-from))' }} />
       <circle cx="10" cy="12" r="0.9" fill="#F8FAFC" className="animate-twinkle" />
       <circle cx="53" cy="10" r="0.7" fill="#F8FAFC" className="animate-twinkle" style={{ animationDelay: '0.6s' }} />
       <circle cx="56" cy="46" r="0.8" fill="#F8FAFC" className="animate-twinkle" style={{ animationDelay: '1.2s' }} />

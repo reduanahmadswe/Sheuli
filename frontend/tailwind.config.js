@@ -1,3 +1,7 @@
+// Colours are CSS variables (see src/index.css) so one set of class names serves
+// both the light theme and the black dark theme.
+const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
@@ -5,37 +9,27 @@ export default {
   theme: {
     extend: {
       colors: {
-        night: {
-          DEFAULT: '#0B1026',
-          50: '#1B2145',
-          100: '#171C3D',
-          200: '#141935',
-          300: '#11152D',
-          400: '#0E1226',
-          500: '#0B1026',
-          600: '#080B1C',
-          700: '#060812',
-          800: '#04050C',
-          900: '#020306'
-        },
-        petal: {
-          DEFAULT: '#F8FAFC',
-          dim: '#CBD5E1'
-        },
-        sheuli: {
-          DEFAULT: '#F97316',
-          light: '#FDBA74',
-          dark: '#C2410C',
-          glow: 'rgba(249, 115, 22, 0.35)'
+        page: token('page'),
+        card: token('card'),
+        soft: token('soft'),
+        line: token('line'),
+        ink: token('ink'),
+        muted: token('muted'),
+        brand: token('brand'),
+        accent: {
+          DEFAULT: token('accent'),
+          strong: token('accent-strong'),
+          hover: token('accent-hover')
         }
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['"Plus Jakarta Sans"', '"Noto Sans Bengali"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         bengali: ['"Noto Sans Bengali"', 'ui-sans-serif', 'sans-serif']
       },
       boxShadow: {
-        glow: '0 0 40px rgba(249, 115, 22, 0.25)',
-        'glow-sm': '0 0 20px rgba(249, 115, 22, 0.18)'
+        card: '0 8px 30px rgb(var(--shadow) / 0.07)',
+        glow: '0 10px 28px rgb(var(--accent) / 0.30)',
+        'glow-sm': '0 6px 16px rgb(var(--accent) / 0.20)'
       },
       keyframes: {
         bloom: {
@@ -46,16 +40,11 @@ export default {
         twinkle: {
           '0%, 100%': { opacity: '0.2' },
           '50%': { opacity: '1' }
-        },
-        float: {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-6px)' }
         }
       },
       animation: {
         bloom: 'bloom 2.4s ease-in-out infinite',
-        twinkle: 'twinkle 3s ease-in-out infinite',
-        float: 'float 4s ease-in-out infinite'
+        twinkle: 'twinkle 3s ease-in-out infinite'
       }
     }
   },

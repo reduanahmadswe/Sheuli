@@ -10,7 +10,7 @@ import Logs from './pages/Logs.jsx';
 
 function LoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-night text-petal-dim">
+    <div className="flex min-h-screen items-center justify-center bg-page text-muted">
       <p className="animate-pulse">Blooming…</p>
     </div>
   );
