@@ -210,6 +210,12 @@ export function getAllSettings() {
   };
 }
 
+// Choosing a mode restarts its timer; 0 minutes means no end time.
+export function setModeTimer(mode, minutes = 0) {
+  const timed = minutes > 0 && mode !== 'normal';
+  setSetting('modeUntil', timed ? new Date(Date.now() + minutes * 60000).toISOString() : '');
+}
+
 // ── Contacts ────────────────────────────────────────────────────────────
 
 export function isRawId(str) {

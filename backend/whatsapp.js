@@ -12,12 +12,14 @@ import { isCostLimitReached, recordApiCost } from './costGuard.js';
 import { runDailySummary } from './summary.js';
 import { transcribeAudioMedia, generateVoiceReplyAudio } from './services/voiceHandler.js';
 import {
+  MODES,
   getActiveModeDetails,
   getModeSystemInstruction,
   getCurrentActivity,
   getActivitySystemInstruction,
   isEmergencyMessage
 } from './modes.js';
+import { buildModeList, parseModeCommand } from './modeCommands.js';
 import { parseNaturalLanguageEvent, saveCalendarEvent, getScheduleSummaryForDate } from './services/googleCalendar.js';
 import {
   upsertContact,
@@ -34,6 +36,7 @@ import {
   setIntroSent,
   countRepliesInLastHour,
   clearAllChatHistory,
+  setModeTimer,
   getDb
 } from './db.js';
 
@@ -215,6 +218,31 @@ function logQuickSkip(chatId, status) {
   });
 }
 
+// "/" lists the modes; "/<number or name> [time]" switches to one.
+async function handleModeCommand(message, body) {
+  const request = parseModeCommand(body);
+  if (request.type === 'list') {
+    await message.reply(buildModeList(getAllSettings().activeMode));
+    return;
+  }
+  if (request.type === 'unknown') {
+    await message.reply('🤔 No such command. Send / to see the mode list.');
+    return;
+  }
+
+  setSetting('activeMode', request.id);
+  setModeTimer(request.id, request.minutes);
+  const settings = getAllSettings();
+  ioRef?.emit('settings:updated', settings);
+
+  const until = settings.modeUntil
+    ? ` until ${new Date(settings.modeUntil).toLocaleTimeString('en-US', { timeZone: settings.timezone, hour: 'numeric', minute: '2-digit' })}`
+    : '';
+  // A mode alone sends nothing while auto-reply is off, so say so.
+  const off = isSheuliActive(settings) ? '' : `\n⚠️ ${settings.assistantName} is OFF — send /on to start replying.`;
+  await message.reply(`✅ Mode: ${MODES[request.id].name}${until}${off}`);
+}
+
 async function handleSelfCommand(message, body) {
   const command = body.trim().toLowerCase();
 
@@ -248,7 +276,11 @@ async function handleSelfCommand(message, body) {
     return true;
   }
 
-  if (command !== '/on' && command !== '/off') return false;
+  if (command !== '/on' && command !== '/off') {
+    if (!command.startsWith('/')) return false;
+    await handleModeCommand(message, body);
+    return true;
+  }
 
   const settings = getAllSettings();
 
@@ -277,7 +309,7 @@ async function handleSelfCommand(message, body) {
 
 // Only these are ever treated as commands, so ordinary outgoing messages are
 // dismissed before any chat-ID lookup.
-const SELF_COMMAND_RE = /^(\/(on|off|summary)$|\/schedule|schedule )/i;
+const SELF_COMMAND_RE = /^(\/|schedule )/i;
 
 function isSelfCommand(body) {
   const named = `${getAllSettings().assistantName.toLowerCase()}, schedule`;

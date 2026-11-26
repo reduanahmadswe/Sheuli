@@ -157,6 +157,8 @@ The first time Sheuli starts, she has no saved WhatsApp session yet, so she'll g
   "Sheuli is resting 🌙" = not replying.
 - **WhatsApp commands**: open "Message Yourself" in WhatsApp and send `/on` or `/off`. Sheuli
   replies in that same chat to confirm: *"🌸 Sheuli is now ON"* / *"🌙 Sheuli is now OFF"*.
+- **Modes from WhatsApp**: in "Message Yourself", send `/` for the numbered mode list, then `/5` or
+  `/lunch` to switch. Add a time to end it automatically: `/lunch 30m`, `/5 2h`.
 - **Schedule mode** (Settings page): enable an automatic nightly window (e.g. 00:00–08:00) in
   your timezone — Sheuli turns herself on during that window even if the master switch is off.
 - **Contacts page**: blacklist people Sheuli should never answer, or (with whitelist mode on in

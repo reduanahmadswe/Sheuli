@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import config from '../config.js';
-import { getAllSettings, setSetting, cleanName } from '../db.js';
+import { getAllSettings, setSetting, cleanName, setModeTimer } from '../db.js';
 
 const router = Router();
 
@@ -53,11 +53,7 @@ router.put('/', (req, res) => {
   if (!Number.isInteger(minutes) || minutes < 0 || minutes > 1440) {
     return res.status(400).json({ error: 'modeMinutes must be between 0 and 1440' });
   }
-  // Choosing a mode restarts its timer; 0 minutes means no end time.
-  if (updates.activeMode !== undefined) {
-    const timed = minutes > 0 && updates.activeMode !== 'normal';
-    setSetting('modeUntil', timed ? new Date(Date.now() + minutes * 60000).toISOString() : '');
-  }
+  if (updates.activeMode !== undefined) setModeTimer(updates.activeMode, minutes);
 
   for (const key of EDITABLE_KEYS) {
     if (Object.prototype.hasOwnProperty.call(updates, key)) {
