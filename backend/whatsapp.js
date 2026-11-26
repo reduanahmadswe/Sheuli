@@ -186,6 +186,37 @@ function randomDelay(minMs = 3000, maxMs = 8000) {
   return new Promise((resolve) => setTimeout(resolve, minMs + Math.random() * (maxMs - minMs)));
 }
 
+// "typing…" / "recording…" is sent by chat ID, not through a Chat object:
+// loading the Chat fails for @lid contacts, which left them with no indicator.
+// WhatsApp only shows it while we appear online, and drops it after ~25s.
+async function startTyping(chatId, state = 'typing') {
+  const send = async (value) => {
+    try {
+      await client.pupPage.evaluate((s, id) => window.WWebJS.sendChatstate(s, id), value, chatId);
+    } catch (err) {
+      logger.warn({ err: err?.message || err, state: value }, 'Could not send typing state');
+    }
+  };
+  const setPresence = async (method) => {
+    try {
+      await client[method]();
+    } catch (err) {
+      logger.debug({ err: err?.message || err }, 'Could not update presence');
+    }
+  };
+
+  await setPresence('sendPresenceAvailable');
+  await send(state);
+  const refresh = setInterval(() => send(state), 10000);
+
+  return async () => {
+    clearInterval(refresh);
+    await send('stop');
+    // Go offline again so the owner's phone keeps getting notifications.
+    await setPresence('sendPresenceUnavailable');
+  };
+}
+
 async function downloadMediaWithRetry(message, retries = 3, delayMs = 1200) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -590,7 +621,6 @@ function takePendingJob(chatId) {
 
 async function replyToContact({
   message,
-  chat,
   chatId,
   contactName,
   candidateJids,
@@ -653,6 +683,13 @@ async function replyToContact({
     ioRef?.emit('emergency:alert', { chatId, contactName, message: incomingBody });
   }
 
+  // ── FEATURE: Voice Auto-Reply (TTS) ──────────────────────────────────
+  const voiceMode = settings.voiceReplyMode || 'auto';
+  const shouldSendVoiceReply = voiceMode === 'voice' || (voiceMode === 'auto' && isVoice);
+
+  // Shown from the moment work starts until the reply has gone out.
+  const stopTyping = await startTyping(chatId, shouldSendVoiceReply ? 'recording' : 'typing');
+
   try {
     const { reply, promptTokens, completionTokens } = await generateReply({
       contactId: chatId,
@@ -669,22 +706,10 @@ async function replyToContact({
       logger.warn({ err: err?.message || err }, 'Failed to record API cost');
     });
 
-    try {
-      if (chat && chat.sendStateTyping) {
-        await chat.sendStateTyping();
-      }
-    } catch (typingErr) {
-      logger.debug({ err: typingErr?.message || typingErr }, 'Could not send typing state (ignoring)');
-    }
-
     await randomDelay(3000, 8000);
 
     let sentSuccess = false;
     let lastErr = null;
-
-    // ── FEATURE: Voice Auto-Reply (TTS) ──────────────────────────────────
-    const voiceMode = settings.voiceReplyMode || 'auto';
-    const shouldSendVoiceReply = voiceMode === 'voice' || (voiceMode === 'auto' && isVoice);
 
     if (shouldSendVoiceReply) {
       try {
@@ -750,6 +775,8 @@ async function replyToContact({
   } catch (err) {
     logger.error({ err: err?.message || err, contactId: chatId }, 'Failed to generate/send reply');
     recordSkip('error');
+  } finally {
+    await stopTyping();
   }
 }
 
