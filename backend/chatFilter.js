@@ -1,5 +1,5 @@
 // Pure, dependency-free chat-type classifier so it can be unit tested without
-// spinning up a real WhatsApp client (see server/tests/chatFilter.test.mjs).
+// spinning up a real WhatsApp client (see backend/tests/chatFilter.test.mjs).
 //
 // Whitelist-by-type: only individual 1-to-1 chats (@c.us and @lid) are eligible for a
 // reply. Every other chat ID shape — including ones we don't recognize yet —

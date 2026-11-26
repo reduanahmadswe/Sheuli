@@ -25,8 +25,6 @@ dark dashboard to control it all.
 - [First run & QR scan](#first-run--qr-scan)
 - [Using Sheuli](#using-sheuli)
 - [Project structure](#project-structure)
-- [Deploying to a Hostinger VPS (Ubuntu)](#deploying-to-a-hostinger-vps-ubuntu)
-- [Deploy on Railway](#deploy-on-railway)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -57,7 +55,6 @@ dark dashboard to control it all.
 | Backend      | Express + `socket.io` (live dashboard updates)              |
 | Database     | `better-sqlite3` (contacts, messages, settings)              |
 | Dashboard    | React + Vite + Tailwind CSS                                  |
-| Process mgmt | PM2 (`ecosystem.config.cjs`, process name `sheuli`)          |
 
 ## Local setup
 
@@ -101,7 +98,7 @@ If you want to edit the dashboard UI with instant refresh, run these two in sepa
 
 ```bash
 npm start                 # terminal 1: backend + API on :3000
-npm run dashboard:dev     # terminal 2: Vite dev server on :5173 (proxies /api and /socket.io to :3000)
+npm run frontend:dev     # terminal 2: Vite dev server on :5173 (proxies /api and /socket.io to :3000)
 ```
 
 Then browse **http://localhost:5173** while developing.
@@ -174,229 +171,43 @@ The first time Sheuli starts, she has no saved WhatsApp session yet, so she'll g
 
 ```
 sheuli/
-├── server/
-│   ├── index.js          # Express + Socket.IO bootstrap, starts the WhatsApp client
+├── backend/
+│   ├── index.js           # Express + Socket.IO bootstrap, starts the WhatsApp client
 │   ├── whatsapp.js        # whatsapp-web.js client, message handler, safety rules
 │   ├── ai.js              # OpenAI call + conversation/prompt building
-│   ├── costGuard.js        # daily API cost tracking + limit enforcement (FEATURE 2)
-│   ├── backup.js           # SQLite hot backup + pruning (FEATURE 3)
-│   ├── summary.js          # daily summary collection + GPT generation + send (FEATURE 4)
-│   ├── jobs.js             # per-minute scheduler for backups + daily summary
+│   ├── modes.js           # life modes and their reply instructions
+│   ├── schedule.js        # schedule window logic
+│   ├── costGuard.js       # daily API cost tracking + limit enforcement
+│   ├── backup.js          # SQLite hot backup + pruning
+│   ├── summary.js         # daily summary collection + GPT generation + send
+│   ├── jobs.js            # per-minute scheduler for backups + daily summary
 │   ├── db.js              # better-sqlite3 schema + queries
 │   ├── logger.js          # pino logger (stdout + file in production)
 │   ├── config.js          # env + default settings, STORAGE_DIR path resolution
 │   ├── middleware/auth.js # signed-cookie session auth
-│   └── routes/            # REST API (auth, settings, contacts, logs, status, summaries)
-├── dashboard/              # React + Vite + Tailwind app (Sheuli UI)
-├── scripts/
-│   └── postinstall.js     # conditionally downloads Puppeteer's Chromium (skipped in Docker)
-├── Dockerfile               # multi-stage build for Railway/any container platform
-├── .dockerignore
+│   ├── routes/            # REST API
+│   ├── services/          # voice notes, calendar events
+│   ├── package.json       # backend dependencies
+│   ├── scripts/           # postinstall + whatsapp-web.js patch
+│   └── tests/
+├── frontend/              # React + Vite + Tailwind app (Sheuli UI)
 │
 │   ── Everything below lives under STORAGE_DIR (defaults to project root
-│      locally; a mounted Volume path like /app/storage on Railway) ──
+│      locally; or the STORAGE_DIR env var) ──
 ├── data/                   # SQLite DB (created at runtime)
 ├── .wwebjs_auth/            # WhatsApp session, created by LocalAuth (created at runtime)
 ├── backups/                 # daily SQLite backups (created at runtime, last 7 kept)
 ├── logs/                   # file logs (created at runtime)
 │
-├── ecosystem.config.cjs    # PM2 config for VPS deploys (process name: sheuli)
 ├── .env.example
 └── package.json
 ```
 
-## Deploying to a Hostinger VPS (Ubuntu 22.04 / 24.04)
-
-These steps assume a fresh Hostinger VPS running Ubuntu, accessed via SSH as a sudo-capable user.
-
-### 1. Update the system and install Node.js 20
-
-```bash
-sudo apt update && sudo apt upgrade -y
-
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-node -v   # should print v20.x
-```
-
-### 2. Install Chromium/Puppeteer dependencies
-
-`whatsapp-web.js` drives a headless Chromium via Puppeteer, which needs a set of system libraries
-that aren't installed on a minimal Ubuntu server:
-
-```bash
-sudo apt install -y \
-  libnss3 libatk-bridge2.0-0 libatk1.0-0 libcups2 libdrm2 libxkbcommon0 \
-  libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
-  libpangocairo-1.0-0 libpango-1.0-0 libgtk-3-0 libx11-xcb1 \
-  fonts-liberation libappindicator3-1 xdg-utils ca-certificates wget
-```
-
-### 3. Install PM2 globally
-
-```bash
-sudo npm install -g pm2
-```
-
-### 4. Upload the project and install dependencies
-
-```bash
-# From your local machine
-scp -r sheuli/ your-user@your-vps-ip:/home/your-user/
-
-# On the VPS
-cd ~/sheuli
-npm run install:all
-```
-
-### 5. Configure environment
-
-```bash
-cp .env.example .env
-nano .env   # fill in OPENAI_API_KEY, DASHBOARD_PASSWORD, SESSION_SECRET, etc.
-```
-
-Set `DASHBOARD_PASSWORD` to something strong — this dashboard will be reachable from the public
-internet unless you firewall it. Consider also restricting the port via `ufw` to your own IP, or
-putting it behind an SSH tunnel / reverse proxy with HTTPS (e.g. Nginx + Let's Encrypt) since the
-login form transmits your password in plaintext over HTTP if you don't add TLS.
-
-### 6. Build the dashboard
-
-```bash
-npm run build
-```
-
-### 7. Start Sheuli with PM2
-
-```bash
-pm2 start ecosystem.config.cjs
-pm2 save
-```
-
-### 8. Enable PM2 auto-start on reboot
-
-```bash
-pm2 startup systemd
-# PM2 will print a command starting with "sudo env PATH=..." — copy/paste and run that exact command
-pm2 save
-```
-
-Now if the VPS reboots, PM2 will bring Sheuli back up automatically.
-
-### 9. Scan the QR code on a headless VPS
-
-You have two options:
-
-- **Via the dashboard (recommended)**: open `http://your-vps-ip:3000` (or your domain, ideally
-  behind HTTPS), log in, and scan the QR shown on the Overview page with your phone.
-- **Via SSH terminal**: run `pm2 logs sheuli` right after starting — the QR is also printed as
-  ASCII art in the logs, and can be scanned directly from a terminal that renders it clearly
-  (a wide enough terminal window, monospace font).
-
-Once scanned, the session persists in `data/wwebjs_auth/` on the VPS, so Sheuli reconnects
-automatically after restarts without scanning again.
-
-### Useful PM2 commands
-
-```bash
-pm2 status            # check if sheuli is running
-pm2 logs sheuli        # tail logs
-pm2 restart sheuli     # restart after a config change
-pm2 stop sheuli        # stop
-```
-
-### Downloading backups off the VPS
-
-Sheuli keeps her last 7 nightly backups in `backups/` on the VPS (see
-[Automatic database backups](#automatic-database-backups)). To copy the latest one to your local machine:
-
-```bash
-scp your-user@your-vps-ip:~/sheuli/backups/sheuli-2026-07-17.db ./
-```
-
-## Deploy on Railway
-
-Sheuli ships with a `Dockerfile`, so Railway can build and run her directly from your GitHub repo — no VPS/SSH
-required. A headless browser session (WhatsApp) and a SQLite database need a real disk to survive redeploys, so
-this setup uses a Railway **Volume** for persistence.
-
-> ⚠️ **Push to a PRIVATE repo.** Your repo will contain your dashboard's auth flow and (once deployed) implicitly
-> represent your linked WhatsApp number. Never make it public, and never commit `.env` or any session folder
-> (`.wwebjs_auth/`, `data/`, `backups/`, `logs/`) — `.gitignore` already excludes all of these, but double-check
-> `git status` before your first push if you've ever run Sheuli locally in this same folder.
-
-### 1. Push to a private GitHub repo
-
-```bash
-git init                      # if not already a git repo
-git add .
-git commit -m "Sheuli — ready for Railway"
-```
-
-Create a new **private** repository on GitHub and push this project to it.
-
-### 2. Create the Railway project
-
-1. Go to [railway.app](https://railway.app), sign in, and click **New Project**.
-2. Choose **Deploy from GitHub repo**, and select your private Sheuli repo.
-3. Railway detects the `Dockerfile` and builds from it automatically — no extra configuration needed for the
-   build itself.
-
-### 3. Add a persistent Volume
-
-Everything outside a mounted Volume is wiped on every deploy/restart, so this step is required — without it,
-Sheuli would lose her WhatsApp session and database every time you redeploy.
-
-1. In your Railway service, open the **Volumes** tab (or **Settings → Volumes**).
-2. Create a new Volume and set its **mount path** to `/app/storage`.
-
-### 4. Set environment variables
-
-In **Settings → Variables**, add:
-
-| Variable | Value |
-|---|---|
-| `OPENAI_API_KEY` | your OpenAI key |
-| `DASHBOARD_PASSWORD` | a strong password |
-| `SESSION_SECRET` | a long random string |
-| `TIMEZONE` | `Asia/Dhaka` |
-| `OWNER_NAME` | `Reduan` |
-| `STORAGE_DIR` | `/app/storage` — **must match the Volume's mount path from step 3** |
-| `WA_WEB_VERSION` | *(optional — leave unset; only set to a specific version from [wa-version](https://github.com/wppconnect-team/wa-version/tree/main/html) if WhatsApp breaks compatibility)* |
-
-Do **not** set `PORT` — Railway injects it automatically, and `config.js` already reads `process.env.PORT`.
-
-### 5. Generate a domain and open the dashboard
-
-1. In **Settings → Networking**, click **Generate Domain**.
-2. Railway will build the image (installing system Chromium per the `Dockerfile`) and start the container.
-3. Once the deploy is healthy, open the generated `https://your-app.up.railway.app` URL.
-4. Log in with your `DASHBOARD_PASSWORD`.
-5. On the **Overview** page, scan the QR code with WhatsApp (**Settings → Linked Devices → Link a Device**), same
-   as local/VPS setup.
-
-Because `STORAGE_DIR` points at the mounted Volume, the linked session and SQLite database persist across every
-future redeploy — you won't need to re-scan unless you unlink the device or delete the Volume.
-
-### Notes
-
-- **Healthcheck**: Sheuli exposes `GET /health` (no login required), returning
-  `{ status: 'ok', whatsapp: 'connected' | 'disconnected', uptime }` — Railway can use this as a healthcheck path
-  in **Settings → Deploy** if you want one.
-- **Redeploys**: Railway sends `SIGTERM` before stopping the old container; Sheuli shuts down cleanly (closes the
-  WhatsApp client and the database) before the new one starts.
-- **Logs**: Sheuli logs to stdout in production (in addition to a file under the Volume), so `railway logs` /
-  the Railway dashboard's log viewer shows everything in real time.
-- **Local dev is unaffected**: `STORAGE_DIR` only needs to be set on Railway (or any container deploy). Leave it
-  unset locally and everything — DB, session, backups, logs — stays exactly where it always has, at the project
-  root.
-
 ## Troubleshooting
 
-- **QR code never appears / Puppeteer crashes on the VPS**: almost always a missing Chromium
-  dependency — re-run the `apt install` command in step 2 and check `pm2 logs sheuli` for the
-  specific missing `.so` file.
+- **QR code never appears / Puppeteer crashes**: almost always a missing Chromium
+  dependency — check the server log for the
+  specific missing browser or library.
 - **Phone shows linked, but dashboard is stuck on "Waiting for QR scan" or `ready` times out**: by default Sheuli
   does not pin a WhatsApp Web version — whatsapp-web.js serves the live/current page, which is what stays
   compatible as WhatsApp updates its web frontend. If `ready` does not fire within 90 seconds after
@@ -413,22 +224,12 @@ future redeploy — you won't need to re-scan unless you unlink the device or de
   loop guard (more than 2 LOGOUT-disconnects within 5 minutes stops auto-retry and waits for a manual QR scan).
 - **"WhatsApp disconnected" loops repeatedly**: usually means the linked session was invalidated
   from your phone (Settings → Linked Devices). Delete the `.wwebjs_auth/` folder (under `STORAGE_DIR` — the
-  project root locally, the Volume on Railway/a VPS) and re-scan.
+  project root by default) and re-scan.
 - **OpenAI errors in the logs**: check your API key and billing status at
   platform.openai.com — Sheuli will fall back to a polite generic message rather than staying
   silent, but won't retry automatically.
 - **Dashboard shows 401 / keeps logging you out**: make sure `SESSION_SECRET` in `.env` is set
   and stable across restarts (changing it invalidates existing sessions).
-- **Daily summary never arrives**: check `pm2 logs sheuli` around the scheduled time — if WhatsApp wasn't
+- **Daily summary never arrives**: check the server log around the scheduled time — if WhatsApp wasn't
   connected at that moment, Sheuli retries on the next minute's check rather than skipping the day. Make sure
   "Enable daily summary" is on in Settings.
-- **(Railway) Lost the WhatsApp session / database after a redeploy**: `STORAGE_DIR` almost certainly isn't set
-  to the same path as the Volume's mount path — double-check both are exactly `/app/storage` (or whatever path
-  you chose), and that the Volume is actually attached to the service.
-- **(Railway) Deploy succeeds but WhatsApp never connects / Puppeteer errors in logs**: check the build logs for
-  the `apt-get install` step — if it failed, `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium` will point at a
-  Chromium that doesn't exist. Also confirm you didn't override `PUPPETEER_EXECUTABLE_PATH` yourself in Railway's
-  Variables — the `Dockerfile` already sets it correctly.
-- **(Railway) Bengali text renders as boxes/tofu in a debug screenshot**: shouldn't happen — the `Dockerfile`
-  installs `fonts-noto-core`/`fonts-noto-ui-core` (Bengali) and `fonts-noto-color-emoji` — but if you customized
-  the `Dockerfile`'s font list, restore those three packages.

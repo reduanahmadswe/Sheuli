@@ -64,9 +64,10 @@ setSocketIo(io);
 // Intentionally unauthenticated — Railway (and any other platform) healthcheck
 // hits this directly with no session cookie.
 app.get('/health', (req, res) => {
+  const status = getConnectionStatus();
   res.json({
     status: 'ok',
-    whatsapp: getConnectionStatus() === 'connected' ? 'connected' : 'disconnected',
+    whatsapp: status === 'connected' || status === 'ready' ? 'connected' : 'disconnected',
     uptime: process.uptime()
   });
 });
@@ -82,7 +83,7 @@ app.use('/api/summaries', requireAuth, summariesRoutes);
 app.use('/api/diagnostics', requireAuth, diagnosticsRoutes);
 app.use('/api/whatsapp', requireAuth, whatsappRoutes);
 
-const dashboardDist = path.join(config.rootDir, 'dashboard', 'dist');
+const dashboardDist = path.join(config.rootDir, 'frontend', 'dist');
 if (fs.existsSync(dashboardDist)) {
   app.use(express.static(dashboardDist));
   app.get('*', (req, res, next) => {

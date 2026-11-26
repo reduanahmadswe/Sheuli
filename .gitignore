@@ -1,6 +1,6 @@
 node_modules/
-dashboard/node_modules/
-dashboard/dist/
+frontend/node_modules/
+frontend/dist/
 .env
 data/
 backups/

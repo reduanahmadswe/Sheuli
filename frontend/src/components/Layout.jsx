@@ -61,37 +61,40 @@ export default function Layout({ children }) {
 
   return (
     <div className="flex min-h-screen">
-      {/* Sidebar (desktop) */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-white/5 bg-night-400/60 px-4 py-6 backdrop-blur-xl lg:flex">
-        <div className="mb-8 flex items-center gap-3 px-2">
-          <Logo size={38} />
-          <div className="flex-1">
-            <div className="flex items-center gap-1.5">
-              <p className="text-base font-bold tracking-tight text-petal">Sheuli</p>
-              <SocketStatusDot />
+      {/* Sidebar (desktop) - Sticky so it stays locked during scroll */}
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col justify-between border-r border-white/5 bg-night-400/60 px-4 py-6 backdrop-blur-xl lg:flex overflow-y-auto">
+        <div className="flex flex-col">
+          <div className="mb-8 flex items-center gap-3 px-2">
+            <Logo size={38} />
+            <div className="flex-1">
+              <div className="flex items-center gap-1.5">
+                <p className="text-base font-bold tracking-tight text-petal">Sheuli</p>
+                <SocketStatusDot />
+              </div>
+              <p className="text-[11px] text-petal-dim">She blooms while you sleep.</p>
             </div>
-            <p className="text-[11px] text-petal-dim">She blooms while you sleep.</p>
           </div>
+          <nav className="flex flex-1 flex-col gap-1">
+            {NAV_ITEMS.map((item) => (
+              <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>
+                <span className="text-lg leading-none">{item.icon}</span>
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
         </div>
-        <nav className="flex flex-1 flex-col gap-1">
-          {NAV_ITEMS.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end} className={navLinkClass}>
-              <span className="text-lg leading-none">{item.icon}</span>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
         <button
           onClick={handleLogout}
-          className="mt-4 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-petal-dim transition-colors hover:border-sheuli/40 hover:text-sheuli-light"
+          className="mt-6 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-petal-dim transition-colors hover:border-sheuli/40 hover:text-sheuli-light shrink-0"
         >
           Log out
         </button>
       </aside>
 
-      {/* Mobile top bar */}
-      <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-white/5 bg-night-400/60 px-4 py-3 backdrop-blur-xl lg:hidden">
+      {/* Main content container */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Mobile top bar */}
+        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-white/5 bg-night-400/90 px-4 py-3 backdrop-blur-xl lg:hidden">
           <div className="flex items-center gap-2">
             <Logo size={30} />
             <span className="font-bold text-petal">Sheuli</span>
@@ -128,7 +131,7 @@ export default function Layout({ children }) {
           </nav>
         )}
 
-        <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>

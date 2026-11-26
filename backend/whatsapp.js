@@ -274,6 +274,51 @@ async function handleSelfCommand(message, body) {
   return true;
 }
 
+// Only these are ever treated as commands, so ordinary outgoing messages are
+// dismissed before any chat-ID lookup.
+const SELF_COMMAND_RE = /^(\/(on|off|summary)$|\/schedule|sheuli, schedule|schedule )/i;
+
+// "Message Yourself" can be addressed by the account's phone-number ID (@c.us)
+// or by its LID (@lid), so a message to either one counts as the self chat.
+async function isSelfChatId(chatId) {
+  const selfId = client?.info?.wid?._serialized;
+  if (!selfId || !chatId) return false;
+  if (chatId === selfId) return true;
+  if (!chatId.endsWith('@lid')) return false;
+  try {
+    const [ids] = await client.getContactLidAndPhone([selfId]);
+    return ids?.lid === chatId;
+  } catch (err) {
+    logger.warn({ err: err?.message || err }, 'Could not resolve own LID for self-chat check');
+    return false;
+  }
+}
+
+// The owner's own messages arrive only on 'message_create' — whatsapp-web.js
+// never emits 'message' for them.
+async function handleOwnMessage(message) {
+  if (switchingAccount || !message.fromMe) return;
+  const body = (message.body || '').trim();
+  if (!SELF_COMMAND_RE.test(body)) return;
+
+  // Never replay an old command synced from history on reconnect.
+  const msgSec = message.timestamp || 0;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (msgSec > 0 && (nowSec - msgSec > 120 || (readyTimestamp > 0 && msgSec < readyTimestamp - 15))) return;
+
+  if (!(await isSelfChatId(message.to))) return;
+
+  const messageId = message.id?._serialized;
+  if (messageId) {
+    if (processedMessageIds.has(messageId) || hasProcessedMessage(messageId)) return;
+    processedMessageIds.add(messageId);
+    markMessageProcessed(messageId);
+  }
+
+  logger.info({ command: body.split(/\s+/)[0] }, 'Self-chat command received');
+  await handleSelfCommand(message, body);
+}
+
 // FIX 5: unconditional visibility into whether messages are arriving at all —
 // logged before ANY filtering/de-dup/skip logic, so "did WhatsApp even hand
 // us this message" is never in question when debugging production logs.
@@ -292,6 +337,8 @@ async function handleIncomingMessage(message) {
     logger.info('Message dropped: WhatsApp account is currently being logged out / switched');
     return;
   }
+  // Own messages are handled by handleOwnMessage() via 'message_create'.
+  if (message.fromMe) return;
   const rawChatId = message.from;
   const rawNumber = (rawChatId || '').replace('@c.us', '').replace('@lid', '').replace('@g.us', '');
   logger.info(
@@ -312,8 +359,6 @@ async function handleIncomingMessage(message) {
   }
 
   const chatId = message.from;
-  const selfId = client.info?.wid?._serialized;
-  const isSelfChat = selfId && chatId === selfId;
 
   // ── SAFETY: Ignore old/historical offline messages ───────────────────────
   // WhatsApp Web syncs unread/offline messages when connecting. We only reply to
@@ -355,17 +400,6 @@ async function handleIncomingMessage(message) {
   }
   if (chat?.isGroup || chat?.isCommunity || chat?.isChannel || chat?.isReadOnly) {
     logQuickSkip(chatId, 'skipped-group');
-    return;
-  }
-
-  // Messages sent by the owner: only handle /on /off in the self chat —
-  // anything else the owner sends (in any chat) is deliberately left alone.
-  if (message.fromMe) {
-    if (isSelfChat) {
-      await handleSelfCommand(message, message.body || '');
-    } else {
-      logQuickSkip(chatId, 'skipped-self');
-    }
     return;
   }
 
@@ -500,7 +534,7 @@ async function handleIncomingMessage(message) {
 
   const introDue = isIntroDue(priorContact);
 
-  // ── FEATURE: Real-time Priority Activity (Calendar -> Routine -> Mode) ──
+  // ── FEATURE: Real-time Priority Activity (Calendar -> Mode) ──
   const currentActivity = getCurrentActivity(settings, getDb(), new Date());
   const activityContext = getActivitySystemInstruction(currentActivity, settings);
   const scheduleContext = getScheduleSummaryForDate(getDb());
@@ -902,7 +936,7 @@ function startAuthenticatedWatchdog() {
   stopAuthenticatedWatchdog();
   if (switchingAccount) return;
 
-  const timeoutMs = authRetryCount >= 3 ? 300000 : 90000;
+  const timeoutMs = authRetryCount >= 3 ? 300000 : 180000;
   logger.info(
     { attempt: authRetryCount + 1, timeoutSec: timeoutMs / 1000 },
     'Starting authenticated->ready watchdog timer'
@@ -914,6 +948,12 @@ function startAuthenticatedWatchdog() {
       return;
     }
     if (connectionStatus === 'ready' || connectionStatus === 'connected') {
+      return;
+    }
+
+    if (client?.info?.wid) {
+      logger.info('Watchdog: WhatsApp client info is already established — setting state to ready');
+      emitStatus('ready');
       return;
     }
 
@@ -1132,6 +1172,14 @@ function attachListeners(clientInstance) {
     // existing reconnect-with-backoff behavior, unchanged.
     logger.warn({ reason }, 'WhatsApp disconnected — cleaning up and attempting clean reconnect...');
     await resetClient(reason);
+  });
+
+  clientInstance.on('message_create', async (message) => {
+    try {
+      await handleOwnMessage(message);
+    } catch (err) {
+      logger.error({ err: err.message }, 'Unhandled error while processing own message');
+    }
   });
 
   clientInstance.on('message', async (message) => {

@@ -197,7 +197,6 @@ export function getAllSettings() {
     autoReplyEnabled: getSetting('autoReplyEnabled', d.autoReplyEnabled),
     mode: getSetting('mode', defaultMode),
     activeMode: getSetting('activeMode', 'normal'),
-    classSchedule: getSetting('classSchedule', '[]'),
     voiceReplyMode: getSetting('voiceReplyMode', 'auto'),
     ttsVoice: getSetting('ttsVoice', 'nova'),
     scheduleStart: getSetting('scheduleStart', d.scheduleStart),

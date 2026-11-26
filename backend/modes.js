@@ -1,6 +1,5 @@
 import config from './config.js';
 import { getCurrentRunningCalendarEvent } from './services/googleCalendar.js';
-import { getZonedDateKey } from './schedule.js';
 
 export const MODES = {
   normal: { id: 'normal', name: 'Normal 🌸', icon: '🌸', description: 'Standard personal AI assistant' },
@@ -48,67 +47,6 @@ export function isEmergencyMessage(text = '') {
   return EMERGENCY_KEYWORDS.some((kw) => normalized.includes(kw));
 }
 
-export function getCurrentClassSlot(scheduleJson, timezone = config.timezone, now = new Date()) {
-  if (!scheduleJson) return null;
-  let schedule = [];
-  try {
-    schedule = typeof scheduleJson === 'string' ? JSON.parse(scheduleJson) : scheduleJson;
-  } catch {
-    return null;
-  }
-
-  if (!Array.isArray(schedule) || schedule.length === 0) return null;
-
-  const todayKey = getZonedDateKey(now, timezone); // 'YYYY-MM-DD'
-  const options = { timeZone: timezone, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false };
-  const formatter = new Intl.DateTimeFormat('en-US', options);
-  const parts = formatter.formatToParts(now);
-
-  let weekday = '';
-  let hour = '00';
-  let minute = '00';
-
-  for (const p of parts) {
-    if (p.type === 'weekday') weekday = p.value;
-    if (p.type === 'hour') hour = p.value;
-    if (p.type === 'minute') minute = p.value;
-  }
-
-  const currentMinutes = parseInt(hour, 10) * 60 + parseInt(minute, 10);
-
-  for (const slot of schedule) {
-    if (!slot.day || !slot.startTime || !slot.endTime) continue;
-
-    // Check expiration date if specified
-    if (slot.validUntil && todayKey > slot.validUntil) continue;
-
-    const slotDayShort = slot.day.slice(0, 3).toLowerCase();
-    if (slotDayShort !== weekday.slice(0, 3).toLowerCase()) continue;
-
-    const [sH, sM] = slot.startTime.split(':').map(Number);
-    const [eH, eM] = slot.endTime.split(':').map(Number);
-
-    const startMinutes = sH * 60 + sM;
-    const endMinutes = eH * 60 + eM;
-
-    if (currentMinutes >= startMinutes && currentMinutes <= endMinutes) {
-      return {
-        id: slot.id,
-        subject: slot.subject || 'Class',
-        code: slot.code || '',
-        room: slot.room || '',
-        group: slot.group || 'All',
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        day: slot.day,
-        validUntil: slot.validUntil
-      };
-    }
-  }
-
-  return null;
-}
-
 export function getCurrentActivity(settings = {}, db = null, now = new Date()) {
   const timezone = settings.timezone || config.timezone;
 
@@ -140,51 +78,28 @@ export function getCurrentActivity(settings = {}, db = null, now = new Date()) {
     }
   }
 
-  // 2nd PRIORITY: University Routine / Class Slot
-  const classSchedule = settings.classSchedule || '[]';
-  const currentClass = getCurrentClassSlot(classSchedule, timezone, now);
-  if (currentClass) {
-    const roomStr = currentClass.room ? ` (Room: ${currentClass.room})` : '';
-    const groupStr = currentClass.group && currentClass.group !== 'All' ? ` [${currentClass.group}]` : '';
-    return {
-      priority: 2,
-      type: 'routine',
-      mode: 'class',
-      title: currentClass.subject,
-      code: currentClass.code || '',
-      room: currentClass.room || '',
-      group: currentClass.group || '',
-      startTime: currentClass.startTime,
-      endTime: currentClass.endTime,
-      details: `In class (${currentClass.subject}${roomStr}${groupStr}) until ${currentClass.endTime}`,
-      classInfo: currentClass
-    };
-  }
-
-  // 3rd PRIORITY: Active Mode (if not 'normal')
+  // 2nd PRIORITY: Active Mode (if not 'normal')
   const activeMode = settings.activeMode || 'normal';
   if (activeMode !== 'normal') {
     const modeInfo = MODES[activeMode] || MODES.normal;
     return {
-      priority: 3,
+      priority: 2,
       type: 'mode',
       mode: activeMode,
       title: modeInfo.name,
       info: modeInfo,
-      details: modeInfo.description,
-      classInfo: null
+      details: modeInfo.description
     };
   }
 
-  // 4th PRIORITY: Normal Assistant Mode
+  // 3rd PRIORITY: Normal Assistant Mode
   return {
-    priority: 4,
+    priority: 3,
     type: 'normal',
     mode: 'normal',
     title: 'Normal 🌸',
     info: MODES.normal,
-    details: 'Normal Assistant Mode 🌸. Away from phone right now.',
-    classInfo: null
+    details: 'Normal Assistant Mode 🌸. Away from phone right now.'
   };
 }
 
@@ -198,21 +113,11 @@ export function getActiveModeDetails(settings, db = null, now = new Date()) {
       activity
     };
   }
-  if (activity.type === 'routine') {
-    return {
-      mode: 'class',
-      info: MODES.class,
-      details: activity.details,
-      classInfo: activity.classInfo,
-      activity
-    };
-  }
   const modeInfo = MODES[activity.mode] || MODES.normal;
   return {
     mode: activity.mode,
     info: modeInfo,
     details: modeInfo.description,
-    classInfo: null,
     activity
   };
 }
@@ -230,21 +135,13 @@ export function getActivitySystemInstruction(activity, settings = {}) {
     );
   }
 
-  if (activity.type === 'routine') {
-    return (
-      `CRITICAL TOP PRIORITY - CURRENT LIVE CLASS / ROUTINE (MUST MENTION):\n` +
-      `Reduan is CURRENTLY attending university class: "${activity.title}" until ${activity.endTime}.\n` +
-      `INSTRUCTION: You MUST inform the sender warmly and politely that Reduan is currently in class (${activity.title}) and cannot reply right now. He will check messages and get back once class finishes at ${activity.endTime}. Do NOT mention room number or exact physical location in your reply.`
-    );
-  }
-
   // Fallback to mode instruction
-  return getModeSystemInstruction({ mode: activity.mode, classInfo: activity.classInfo }, settings);
+  return getModeSystemInstruction({ mode: activity.mode }, settings);
 }
 
 
 export function getModeSystemInstruction(modeDetails, settings = {}) {
-  const { mode, classInfo } = modeDetails;
+  const { mode } = modeDetails;
 
   const customKey = `modePrompt_${mode}`;
   if (settings && settings[customKey]) {
@@ -350,7 +247,7 @@ export function getModeSystemInstruction(modeDetails, settings = {}) {
       );
     case 'class':
       return (
-        `CURRENT STATUS & INSTRUCTION: Reduan is currently in CLASS 🏫 (${classInfo?.subject || 'University Class'}) until ${classInfo?.endTime || 'later'}.\n` +
+        'CURRENT STATUS & INSTRUCTION: Reduan is currently in CLASS 🏫.\n' +
         'Inform the sender politely that Reduan is attending class right now and will check messages once class ends.'
       );
     case 'study':
@@ -428,7 +325,6 @@ export default {
   MODES,
   EMERGENCY_KEYWORDS,
   isEmergencyMessage,
-  getCurrentClassSlot,
   getCurrentActivity,
   getActiveModeDetails,
   getModeSystemInstruction,

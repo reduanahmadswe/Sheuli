@@ -1,5 +1,5 @@
 // Pure schedule-evaluation logic, kept dependency-free (no db.js / whatsapp.js
-// imports) so it can be unit tested directly (see server/tests/schedule.test.mjs).
+// imports) so it can be unit tested directly (see backend/tests/schedule.test.mjs).
 //
 // The core rule: isSheuliActive(settings, now) is a pure function re-evaluated
 // on every incoming message — there is no timer that "flips a flag" and could

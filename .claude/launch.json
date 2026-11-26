@@ -8,9 +8,9 @@
       "port": 3000
     },
     {
-      "name": "sheuli-dashboard",
+      "name": "sheuli-frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dashboard:dev"],
+      "runtimeArgs": ["run", "frontend:dev"],
       "port": 5173
     }
   ]

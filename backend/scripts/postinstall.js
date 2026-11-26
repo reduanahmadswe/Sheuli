@@ -10,3 +10,9 @@ if (process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD === 'true') {
 }
 
 execSync('npx puppeteer browsers install chrome', { stdio: 'inherit' });
+
+// Patch whatsapp-web.js to prevent unhandled rejection during ready event
+import('./patch-wwebjs.js').catch((err) => {
+  console.warn('[Sheuli] Failed to apply wwebjs patch:', err.message);
+});
+

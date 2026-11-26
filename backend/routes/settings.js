@@ -17,7 +17,6 @@ const EDITABLE_KEYS = [
   'dailySummaryTime',
   'dailySummarySkipIfEmpty',
   'activeMode',
-  'classSchedule',
   'voiceReplyMode',
   'ttsVoice'
 ];
