@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import config from '../config.js';
-import { getAllSettings, setSetting } from '../db.js';
+import { getAllSettings, setSetting, cleanName } from '../db.js';
 
 const router = Router();
 
@@ -9,7 +9,8 @@ const router = Router();
 // always comes from the server's TIMEZONE env var.
 const EDITABLE_KEYS = [
   'autoReplyEnabled',
-  'systemPrompt',
+  'assistantName',
+  'ownerName',
   'model',
   'rateLimitPerHour',
   'costLimitDaily',
@@ -22,6 +23,7 @@ const EDITABLE_KEYS = [
 ];
 
 const NUMERIC_KEYS = new Set(['costLimitDaily', 'rateLimitPerHour']);
+const NAME_KEYS = new Set(['assistantName', 'ownerName']);
 
 router.get('/', (req, res) => {
   res.json(getAllSettings());
@@ -49,7 +51,10 @@ router.put('/', (req, res) => {
 
   for (const key of EDITABLE_KEYS) {
     if (Object.prototype.hasOwnProperty.call(updates, key)) {
-      setSetting(key, NUMERIC_KEYS.has(key) ? Number(updates[key]) : updates[key]);
+      let value = updates[key];
+      if (NUMERIC_KEYS.has(key)) value = Number(value);
+      if (NAME_KEYS.has(key)) value = cleanName(value);
+      setSetting(key, value);
     }
   }
 

@@ -1,3 +1,4 @@
+import { useAssistantName } from '../lib/identity.js';
 import { useEffect, useState } from 'react';
 import api from '../lib/api.js';
 import { getDisplayName } from '../lib/formatContact.js';
@@ -79,6 +80,7 @@ function SummaryRow({ summary, expanded, onToggle }) {
 }
 
 export default function Logs() {
+  const assistant = useAssistantName();
   const [tab, setTab] = useState('logs');
 
   const [logs, setLogs] = useState([]);
@@ -126,7 +128,7 @@ export default function Logs() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="page-title">Logs</h1>
-          <p className="text-sm text-muted">Every message event Sheuli has recorded, and her daily summaries.</p>
+          <p className="text-sm text-muted">Every message event {assistant} has recorded, and its daily summaries.</p>
         </div>
         {tab === 'logs' && (
           <select
@@ -214,7 +216,7 @@ export default function Logs() {
           ))}
           {!summariesLoading && summaries.length === 0 && (
             <p className="px-4 py-8 text-center text-muted">
-              No summaries yet — the first one will appear here once Sheuli's daily summary runs.
+              No summaries yet — the first one will appear here once {assistant}'s daily summary runs.
             </p>
           )}
         </div>

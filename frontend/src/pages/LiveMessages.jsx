@@ -1,3 +1,4 @@
+import { useAssistantName } from '../lib/identity.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../lib/api.js';
 import getSocket from '../lib/socket.js';
@@ -53,10 +54,11 @@ function dayLabel(iso) {
 }
 
 function ChatListItem({ chat, active, onClick }) {
+  const assistant = useAssistantName();
   const displayName = getDisplayName(chat.name, chat.number, chat.contactId);
   const preview = chat.lastMessageBody
     ? chat.lastMessageDirection === 'out'
-      ? `Sheuli: ${chat.lastMessageBody}`
+      ? `${assistant}: ${chat.lastMessageBody}`
       : chat.lastMessageBody
     : chat.lastMessageStatus
       ? `— ${(STATUS_TAG[chat.lastMessageStatus] || chat.lastMessageStatus).replace('_', ' ')}`
@@ -141,6 +143,7 @@ function DateSeparator({ label }) {
 }
 
 export default function LiveMessages() {
+  const assistant = useAssistantName();
   const [chats, setChats] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState(null);
@@ -259,7 +262,7 @@ export default function LiveMessages() {
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="page-title">Live Messages</h1>
-        <p className="text-sm text-muted">Chat with Sheuli's conversations, one contact at a time.</p>
+        <p className="text-sm text-muted">Chat with {assistant}'s conversations, one contact at a time.</p>
       </div>
 
       <div className="flex h-[calc(100dvh-15rem)] min-h-[22rem] overflow-hidden md:h-[calc(100dvh-13rem)] rounded-2xl border border-line bg-card shadow-card">

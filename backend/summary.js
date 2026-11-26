@@ -11,7 +11,7 @@ import { openai } from './ai.js';
 import { recordApiCost } from './costGuard.js';
 import { sendSelfMessage } from './whatsapp.js';
 import { getZonedDateKey, toSqliteUtc } from './schedule.js';
-import { getSetting, setSetting, getMessagesForSummary, insertSummary } from './db.js';
+import { getSetting, setSetting, getMessagesForSummary, insertSummary, getAllSettings } from './db.js';
 
 let ioRef = null;
 
@@ -73,7 +73,7 @@ function buildTranscript(rows, timezone) {
       if (replied) totalReplied += 1;
       const time = formatZonedTime(m.createdAt, timezone);
       const body = (m.body || '').replace(/\s+/g, ' ').trim().slice(0, 300);
-      lines.push(`- [${time}] "${body}" (Sheuli replied: ${replied ? 'yes' : 'no'})`);
+      lines.push(`- [${time}] "${body}" (assistant replied: ${replied ? 'yes' : 'no'})`);
     }
     if (lines.length) {
       contactBlocks.push({ contactId, contactName, text: `Contact: ${contactName}\n${lines.join('\n')}` });
@@ -114,8 +114,13 @@ async function trackUsage(usage) {
   }
 }
 
-const STAGE_ONE_SYSTEM_PROMPT =
-  'তুমি Sheuli, Reduan-এর WhatsApp assistant। নিচে কিছু contact-এর সাথে হওয়া message-এর তালিকা দেওয়া আছে। ' +
+const names = () => {
+  const settings = getAllSettings();
+  return { assistant: settings.assistantName, owner: settings.effectiveOwnerName };
+};
+
+const stageOnePrompt = ({ assistant, owner }) =>
+  `তুমি ${assistant}, ${owner}-এর WhatsApp assistant। নিচে কিছু contact-এর সাথে হওয়া message-এর তালিকা দেওয়া আছে। ` +
   'প্রতিটা contact-এর জন্য সংক্ষিপ্ত bullet note বানাও (বাংলায়) — কী নিয়ে কথা হয়েছে, কোনো জরুরি/action দরকার কিনা। ' +
   'শুধু দেওয়া তথ্য থেকেই লিখবে, কিছু বানিয়ে লিখবে না। প্রতিটা contact-এর নাম অবশ্যই রাখবে।';
 
@@ -125,7 +130,7 @@ async function callStageOneSummary(chunkText) {
   const completion = await openai.chat.completions.create({
     model: config.defaults.model,
     messages: [
-      { role: 'system', content: STAGE_ONE_SYSTEM_PROMPT },
+      { role: 'system', content: stageOnePrompt(names()) },
       { role: 'user', content: chunkText }
     ],
     max_tokens: 500,
@@ -136,9 +141,9 @@ async function callStageOneSummary(chunkText) {
   return completion.choices?.[0]?.message?.content?.trim() || '';
 }
 
-const FINAL_SUMMARY_SYSTEM_PROMPT = `তুমি Sheuli, Reduan-এর personal WhatsApp assistant। নিচে গত পর্বে আসা message-গুলোর তথ্য দেওয়া আছে, contact অনুযায়ী গ্রুপ করা, প্রতিটার সাথে Sheuli reply দিয়েছে কিনা তা বলা আছে।
+const finalPrompt = ({ assistant, owner }) => `তুমি ${assistant}, ${owner}-এর personal WhatsApp assistant। নিচে গত পর্বে আসা message-গুলোর তথ্য দেওয়া আছে, contact অনুযায়ী গ্রুপ করা, প্রতিটার সাথে ${assistant} reply দিয়েছে কিনা তা বলা আছে।
 
-তোমার কাজ: এই তথ্য থেকে Reduan-এর জন্য একটা সংক্ষিপ্ত বাংলা summary বানানো, নিচের তিনটা section-এ ভাগ করে (ঠিক এই heading-গুলো ব্যবহার করবে, heading না বদলে):
+তোমার কাজ: এই তথ্য থেকে ${owner}-এর জন্য একটা সংক্ষিপ্ত বাংলা summary বানানো, নিচের তিনটা section-এ ভাগ করে (ঠিক এই heading-গুলো ব্যবহার করবে, heading না বদলে):
 
 🔴 গুরুত্বপূর্ণ / action দরকার:
 🟡 Reply করা ভালো:
@@ -148,7 +153,7 @@ Rules (অবশ্যই মানতে হবে):
 - শুধু নিচে দেওয়া তথ্য থেকেই লিখবে, কোনো message বা contact কখনো বানিয়ে লিখবে না।
 - প্রতিটা bullet এক লাইনে রাখবে, "• নাম — বিস্তারিত" এই format-এ।
 - ⚪ Casual section-এ প্রতিটা contact আলাদা bullet না দিয়ে একসাথে সংক্ষেপে বলবে, যেমন "• ৮ জন — সালাম/হাই ধরনের message, reply দেওয়া হয়েছে।"
-- স্বাভাবিক, কথ্য বাংলায় লিখবে (রেদুয়ানের নিজের ভাষার মতো)।
+- স্বাভাবিক, কথ্য বাংলায় লিখবে (${owner}-এর নিজের ভাষার মতো)।
 - পুরো output অবশ্যই ১৫০০ character-এর মধ্যে রাখবে।
 - শুধু উপরের তিনটা section-ই output করবে — অন্য কোনো heading, ভূমিকা, conclusion, বা "মোট" সংখ্যা লিখবে না (সেটা আলাদাভাবে যোগ করা হবে)।
 - কোনো section-এর জন্য কিছু না থাকলে সেই section পুরোপুরি বাদ দিয়ে দাও।`;
@@ -157,7 +162,7 @@ async function callFinalGrouping(sourceText) {
   const completion = await openai.chat.completions.create({
     model: config.defaults.model,
     messages: [
-      { role: 'system', content: FINAL_SUMMARY_SYSTEM_PROMPT },
+      { role: 'system', content: finalPrompt(names()) },
       { role: 'user', content: sourceText }
     ],
     max_tokens: 800,
@@ -201,7 +206,7 @@ export async function buildDailySummaryText({ sinceIso, untilIso, now }) {
 
   const dateLabel = formatSummaryDateLabel(now, config.timezone);
   const header =
-    `🌅 Sheuli Daily Summary — ${dateLabel}\n\n` +
+    `🌅 ${names().assistant} Daily Summary — ${dateLabel}\n\n` +
     `📊 মোট: ${toBanglaNumber(contactCount)} জন থেকে ${toBanglaNumber(totalIncoming)}টা message, আমি ${toBanglaNumber(
       totalReplied
     )}টার reply দিয়েছি।`;

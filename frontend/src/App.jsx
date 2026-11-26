@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { useAssistantName } from './lib/identity.js';
 import Layout from './components/Layout.jsx';
 import useAuth from './hooks/useAuth.js';
 import Login from './pages/Login.jsx';
@@ -26,6 +28,11 @@ function ProtectedRoute({ children }) {
 }
 
 export default function App() {
+  const assistant = useAssistantName();
+  useEffect(() => {
+    document.title = `${assistant} — WhatsApp AI Assistant`;
+  }, [assistant]);
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />

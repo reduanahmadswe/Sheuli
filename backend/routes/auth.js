@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import config from '../config.js';
+import { getAllSettings } from '../db.js';
 import { issueSessionCookie, clearSessionCookie, isAuthenticated } from '../middleware/auth.js';
 
 const router = Router();
@@ -55,7 +56,8 @@ router.post('/logout', (req, res) => {
 });
 
 router.get('/me', (req, res) => {
-  return res.json({ authenticated: isAuthenticated(req) });
+  // The assistant name is public so the login page can show it; the owner name is not.
+  return res.json({ authenticated: isAuthenticated(req), assistantName: getAllSettings().assistantName });
 });
 
 export default router;

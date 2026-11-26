@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import api from '../lib/api.js';
+import { setAssistantName } from '../lib/identity.js';
 
 export function useAuth() {
   const [authenticated, setAuthenticated] = useState(null); // null = loading
@@ -10,6 +11,7 @@ export function useAuth() {
     try {
       const { data } = await api.get('/auth/me');
       setAuthenticated(Boolean(data.authenticated));
+      setAssistantName(data.assistantName);
     } catch {
       setAuthenticated(false);
     } finally {

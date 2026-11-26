@@ -1,5 +1,5 @@
 import logger from '../logger.js';
-import { getSetting, setSetting } from '../db.js';
+import { getSetting, setSetting, getAllSettings } from '../db.js';
 
 export function parseNaturalLanguageEvent(text) {
   const normalized = text.trim();
@@ -128,8 +128,9 @@ export function getCurrentRunningCalendarEvent(db, now = new Date()) {
 
 export function getScheduleSummaryForDate(db, targetDateStr = 'today') {
   const events = getUpcomingEvents(db, 7);
+  const owner = getAllSettings().effectiveOwnerName;
   if (!events || events.length === 0) {
-    return 'Reduan has no scheduled calendar events for today, he is free.';
+    return `${owner} has no scheduled calendar events for today and is free.`;
   }
 
   const list = events.map((e) => {
@@ -138,7 +139,7 @@ export function getScheduleSummaryForDate(db, targetDateStr = 'today') {
     return `• ${e.summary} (${sDate} - ${eDate})`;
   }).join('\n');
 
-  return `Reduan's schedule:\n${list}`;
+  return `${owner}'s schedule:\n${list}`;
 }
 
 export default {

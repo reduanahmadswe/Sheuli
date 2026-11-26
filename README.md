@@ -76,7 +76,6 @@ DASHBOARD_PASSWORD=choose-a-strong-password
 SESSION_SECRET=some-long-random-string
 PORT=3000
 TIMEZONE=Asia/Dhaka
-OWNER_NAME=Reduan
 
 BACKUP_TIME=03:00
 ```

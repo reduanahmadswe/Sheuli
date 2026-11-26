@@ -1,3 +1,4 @@
+import { useAssistantName } from '../lib/identity.js';
 import { useEffect, useState } from 'react';
 import api from '../lib/api.js';
 import getSocket from '../lib/socket.js';
@@ -98,6 +99,7 @@ function formatInZone(iso, timezone) {
 }
 
 export default function Overview() {
+  const assistant = useAssistantName();
   const [connection, setConnection] = useState('initializing');
   const [loadingPercent, setLoadingPercent] = useState(0);
   const [info, setInfo] = useState(null);
@@ -244,7 +246,7 @@ export default function Overview() {
   } else {
     subtitle = active
       ? 'Auto-replies are active for incoming chats.'
-      : 'Turn this on so Sheuli can reply while you’re away.';
+      : `Turn this on so ${assistant} can reply while you’re away.`;
   }
 
   return (
@@ -252,7 +254,7 @@ export default function Overview() {
       {stats.costLimitReached && (
         <div className="rounded-2xl border border-yellow-500/40 bg-yellow-400/10 px-4 py-3 text-sm text-yellow-800 dark:text-yellow-200">
           ⚠️ Today's API cost limit (${stats.costLimitDaily.toFixed(2)}) has been reached — auto-replies are paused until
-          local midnight. Raise the limit in Settings if you need Sheuli back sooner.
+          local midnight. Raise the limit in Settings if you need {assistant} back sooner.
         </div>
       )}
 
@@ -266,7 +268,7 @@ export default function Overview() {
             Replies for you, <span className="text-accent">while you rest</span>
           </h1>
           <p className="mt-3 max-w-xl text-sm text-muted sm:text-base">
-            Sheuli watches your personal chats and answers politely, based on what you are doing right now.
+            {assistant} watches your personal chats and answers politely, based on what you are doing right now.
           </p>
         </div>
 
@@ -277,7 +279,7 @@ export default function Overview() {
           <div className="mt-3 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <p className={`text-xl font-extrabold ${active ? 'text-accent-strong' : 'text-brand'}`}>
-                {active ? 'Sheuli is awake 🌸' : 'Sheuli is resting 🌙'}
+                {active ? `${assistant} is awake 🌸` : `${assistant} is resting 🌙`}
               </p>
               <p className="mt-1 text-xs text-muted">{subtitle}</p>
               {isScheduleMode && <p className="mt-1 text-xs text-muted">Schedule mode is in control right now.</p>}

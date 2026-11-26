@@ -1,55 +1,104 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api.js';
 import getSocket from '../lib/socket.js';
+import { useAssistantName } from '../lib/identity.js';
 
-const MODEL_OPTIONS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'];
+// Every change on this page saves by itself; a small "Saved" note confirms it.
+
+const TABS = [
+  { id: 'general', label: 'General', icon: '🌸' },
+  { id: 'replies', label: 'Replies', icon: '💬' },
+  { id: 'summary', label: 'Summary', icon: '🌅' },
+  { id: 'account', label: 'Account', icon: '📱' }
+];
+
+const MODEL_OPTIONS = [
+  { value: 'gpt-4o-mini', label: 'gpt-4o-mini (cheapest, recommended)' },
+  { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
+  { value: 'gpt-4o', label: 'gpt-4o (smarter, costs more)' }
+];
+const VOICE_OPTIONS = [
+  { value: 'nova', label: 'Nova (warm female)' },
+  { value: 'shimmer', label: 'Shimmer (clear female)' },
+  { value: 'alloy', label: 'Alloy (neutral)' },
+  { value: 'echo', label: 'Echo (calm male)' },
+  { value: 'fable', label: 'Fable (expressive)' },
+  { value: 'onyx', label: 'Onyx (deep male)' }
+];
+const RATE_LIMITS = [5, 10, 20, 50, 100, 0];
+const COST_LIMITS = [0.25, 0.5, 1, 2, 5];
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const STATUS_LABEL = {
   initializing: { text: 'Starting up…', color: 'bg-yellow-400' },
   qr: { text: 'Waiting for QR scan', color: 'bg-yellow-400' },
-  authenticated: { text: '✅ Authenticated — starting up…', color: 'bg-blue-400' },
-  loading: { text: '⏳ Authenticated — loading chats…', color: 'bg-blue-400' },
+  authenticated: { text: 'Signed in — starting up…', color: 'bg-blue-400' },
+  loading: { text: 'Loading chats…', color: 'bg-blue-400' },
   ready: { text: 'Connected', color: 'bg-emerald-400' },
   connected: { text: 'Connected', color: 'bg-emerald-400' },
   disconnected: { text: 'Disconnected — reconnecting', color: 'bg-red-400' },
-  auth_failure: { text: 'Authentication failed', color: 'bg-red-400' },
+  auth_failure: { text: 'Sign-in failed', color: 'bg-red-400' },
   logging_out: { text: 'Logging out…', color: 'bg-yellow-400' },
-  needs_qr: { text: 'Preparing a fresh QR to reconnect…', color: 'bg-yellow-400' }
+  needs_qr: { text: 'Preparing a new QR code…', color: 'bg-yellow-400' }
 };
 
-// FIX 4: distinct copy for the account-switch window (before the fresh QR is
-// ready) and for the loop-guard recovery case (QR is ready, but it took a
-// failed auto-recovery to get there).
 function getStatusDisplay(status, percent, switchingAccount, sessionRecoveryFailed) {
-  if (switchingAccount && status !== 'qr') {
-    return { text: '🔄 Switching account — preparing a fresh QR…', color: 'bg-yellow-400' };
-  }
+  if (switchingAccount && status !== 'qr') return { text: 'Switching account…', color: 'bg-yellow-400' };
   if (status === 'qr' && sessionRecoveryFailed) {
-    return { text: "Session couldn't be restored — scan the QR below to reconnect.", color: 'bg-red-400' };
+    return { text: "Couldn't restore the session — scan the QR code below.", color: 'bg-red-400' };
   }
-  if (status === 'loading') {
-    return {
-      text: `⏳ Authenticated — loading chats… ${percent || 0}%`,
-      color: 'bg-blue-400'
-    };
-  }
+  if (status === 'loading') return { text: `Loading chats… ${percent || 0}%`, color: 'bg-blue-400' };
   return STATUS_LABEL[status] || STATUS_LABEL.initializing;
 }
 
-function Toggle({ checked, onChange, disabled = false }) {
+function formatDiagnosticTime(iso) {
+  if (!iso) return 'never';
+  return new Date(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+const FIELD =
+  'w-full rounded-xl border border-line bg-soft px-3 py-2.5 text-sm text-ink outline-none ring-accent/50 focus:ring-2';
+
+function Card({ title, hint, children }) {
+  return (
+    <section className="card p-4 sm:p-6">
+      <h2 className="section-title">{title}</h2>
+      {hint && <p className="mt-1.5 text-sm text-muted">{hint}</p>}
+      <div className="mt-2 divide-y divide-line">{children}</div>
+    </section>
+  );
+}
+
+// One setting: what it is on the left, the control on the right (below on phones).
+function Row({ label, hint, children }) {
+  return (
+    <div className="flex flex-col gap-2 py-4 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-ink">{label}</p>
+        {hint && <p className="mt-0.5 text-xs text-muted">{hint}</p>}
+      </div>
+      <div className="w-full shrink-0 sm:w-64">{children}</div>
+    </div>
+  );
+}
+
+function Toggle({ checked, onChange, label }) {
   return (
     <button
+      type="button"
       onClick={onChange}
-      disabled={disabled}
       aria-pressed={checked}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-        checked ? 'bg-accent' : 'bg-line'
-      } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+      aria-label={label}
+      className={`relative h-7 w-12 rounded-full transition-colors sm:ml-auto sm:block ${checked ? 'bg-accent' : 'bg-line'}`}
     >
       <span
-        className={`absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+        className={`absolute left-0 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${
           checked ? 'translate-x-6' : 'translate-x-1'
         }`}
       />
@@ -57,74 +106,64 @@ function Toggle({ checked, onChange, disabled = false }) {
   );
 }
 
-function Section({ title, description, children }) {
+function Choice({ selected, onClick, title, text }) {
   return (
-    <div className="rounded-2xl border border-line bg-card p-4 shadow-card sm:p-6">
-      <h2 className="section-title">{title}</h2>
-      {description && <p className="mt-1 text-xs text-muted">{description}</p>}
-      <div className="mt-4">{children}</div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`rounded-2xl border p-4 text-left transition ${
+        selected ? 'border-accent bg-accent/10' : 'border-line bg-card hover:border-accent/50'
+      }`}
+    >
+      <span className="flex items-center justify-between gap-2 text-sm font-bold text-ink">
+        {title}
+        {selected && <span className="text-accent">✓</span>}
+      </span>
+      <span className="mt-1 block text-xs text-muted">{text}</span>
+    </button>
   );
 }
 
-function formatTime12h(hhmm) {
-  if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return hhmm || '';
-  const [h, m] = hhmm.split(':').map(Number);
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hour12 = h % 12 === 0 ? 12 : h % 12;
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
-}
+// Saves when the field is left (or Enter is pressed), and only if it changed.
+function NameField({ value, placeholder, onSave }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
 
-function formatDiagnosticTime(iso) {
-  if (!iso) return 'never';
-  try {
-    return new Date(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`).toLocaleString([], {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch {
-    return iso;
-  }
-}
-
-function DiagRow({ label, value, tone }) {
-  const toneClass = tone === 'good' ? 'text-emerald-700 dark:text-emerald-300' : tone === 'bad' ? 'text-red-700 dark:text-red-300' : 'text-ink';
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-line py-2 text-sm last:border-none">
+    <input
+      value={draft}
+      maxLength={40}
+      placeholder={placeholder}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => draft.trim() !== value && onSave(draft.trim())}
+      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+      className={FIELD}
+    />
+  );
+}
+
+function InfoRow({ label, value, good }) {
+  const tone = good === undefined ? 'text-ink' : good ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300';
+  return (
+    <div className="flex items-center justify-between gap-4 py-2 text-sm">
       <span className="text-muted">{label}</span>
-      <span className={`min-w-0 break-all text-right font-medium ${toneClass}`}>{value}</span>
+      <span className={`min-w-0 break-all text-right font-medium ${tone}`}>{value}</span>
     </div>
   );
-}
-
-function describeDays(days) {
-  if (!Array.isArray(days) || days.length === 0 || days.length === 7) return 'every day';
-  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const weekend = ['Sat', 'Sun'];
-  const sorted = [...days].sort((a, b) => WEEKDAYS.indexOf(a) - WEEKDAYS.indexOf(b));
-  if (sorted.length === 5 && weekdays.every((d) => sorted.includes(d))) return 'on weekdays';
-  if (sorted.length === 2 && weekend.every((d) => sorted.includes(d))) return 'on weekends';
-  return `on ${sorted.join(', ')}`;
 }
 
 export default function Settings() {
+  const assistant = useAssistantName();
+  const navigate = useNavigate();
+
+  const [tab, setTab] = useState('general');
   const [settings, setSettings] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState(null);
-
   const [schedule, setSchedule] = useState(null);
-  const [scheduleSaving, setScheduleSaving] = useState(false);
-  const [scheduleSavedAt, setScheduleSavedAt] = useState(null);
-  const [scheduleError, setScheduleError] = useState('');
-
-  const [rateLimitDraft, setRateLimitDraft] = useState('10');
-  const [rateLimitError, setRateLimitError] = useState('');
+  const [notice, setNotice] = useState(null);
+  const noticeTimer = useRef(null);
 
   const [diagnostics, setDiagnostics] = useState(null);
-  const [diagnosticsLoading, setDiagnosticsLoading] = useState(true);
-
   const [waStatus, setWaStatus] = useState('initializing');
   const [loadingPercent, setLoadingPercent] = useState(0);
   const [waInfo, setWaInfo] = useState(null);
@@ -138,26 +177,28 @@ export default function Settings() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState('');
 
-  const navigate = useNavigate();
+  // QR is only meaningful while waiting for a scan.
+  const applyConnection = (status, details = {}) => {
+    setWaStatus(status);
+    if (details.loadingPercent !== undefined) setLoadingPercent(details.loadingPercent);
+    setSwitchingAccount(Boolean(details.switchingAccount));
+    setSessionRecoveryFailed(Boolean(details.sessionRecoveryFailed));
+    setPairingRejectedHint(Boolean(details.pairingRejectedHint));
+    if (['authenticated', 'loading', 'ready', 'connected', 'logging_out'].includes(status)) setWaQr(null);
+  };
 
   const loadDiagnostics = async () => {
     try {
       const { data } = await api.get('/diagnostics');
       setDiagnostics(data);
       if (data.whatsapp) {
-        setWaStatus(data.whatsapp.state);
-        if (data.whatsapp.loadingPercent !== undefined) setLoadingPercent(data.whatsapp.loadingPercent);
+        applyConnection(data.whatsapp.state, data.whatsapp);
         if (data.whatsapp.number || data.whatsapp.name) {
           setWaInfo({ number: data.whatsapp.number, name: data.whatsapp.name });
         }
-        setSwitchingAccount(Boolean(data.whatsapp.switchingAccount));
-        setSessionRecoveryFailed(Boolean(data.whatsapp.sessionRecoveryFailed));
-        setPairingRejectedHint(Boolean(data.whatsapp.pairingRejectedHint));
       }
     } catch {
-      // Leave the last-known values displayed rather than clearing them.
-    } finally {
-      setDiagnosticsLoading(false);
+      // Keep the last known values on screen.
     }
   };
 
@@ -165,62 +206,73 @@ export default function Settings() {
     api.get('/settings').then(({ data }) => setSettings(data));
     api.get('/settings/schedule').then(({ data }) => setSchedule(data));
     api.get('/status').then(({ data }) => {
-      setWaStatus(data.connection);
-      if (data.loadingPercent !== undefined) setLoadingPercent(data.loadingPercent);
+      applyConnection(data.connection, data);
       setWaInfo(data.info);
-      setSwitchingAccount(Boolean(data.switchingAccount));
-      setSessionRecoveryFailed(Boolean(data.sessionRecoveryFailed));
-      setPairingRejectedHint(Boolean(data.pairingRejectedHint));
-      if (
-        data.connection === 'authenticated' ||
-        data.connection === 'loading' ||
-        data.connection === 'ready' ||
-        data.connection === 'connected' ||
-        data.connection === 'logging_out'
-      ) {
-        setWaQr(null);
-      }
+      if (data.qr) setWaQr(data.qr);
     });
     loadDiagnostics();
     const interval = setInterval(loadDiagnostics, 10000);
 
     const socket = getSocket();
     const onWaStatus = (details) => {
-      const st = typeof details === 'string' ? details : details?.status || details?.connection || 'initializing';
-      setWaStatus(st);
-      if (details && typeof details === 'object') {
-        if (details.loadingPercent !== undefined) setLoadingPercent(details.loadingPercent);
-        if (details.info !== undefined) setWaInfo(details.info);
-        // FIX 2.4/4: trust the server's `switchingAccount` flag directly
-        // instead of re-deriving it from the status string here — the
-        // server now keeps it true until the fresh client actually reaches
-        // 'qr', and guessing it as false on 'qr' locally was reintroducing
-        // the same premature-clear race client-side.
-        setSwitchingAccount(Boolean(details.switchingAccount));
-        setSessionRecoveryFailed(Boolean(details.sessionRecoveryFailed));
-        setPairingRejectedHint(Boolean(details.pairingRejectedHint));
-      }
-      if (
-        st === 'authenticated' ||
-        st === 'loading' ||
-        st === 'ready' ||
-        st === 'connected' ||
-        st === 'logging_out'
-      ) {
-        setWaQr(null);
-      }
+      if (typeof details === 'string') return applyConnection(details);
+      applyConnection(details?.status || details?.connection || 'initializing', details);
+      if (details?.info !== undefined) setWaInfo(details.info);
     };
     const onWaQr = ({ qr }) => setWaQr(qr);
-
     socket.on('whatsapp:status', onWaStatus);
     socket.on('whatsapp:qr', onWaQr);
 
     return () => {
       clearInterval(interval);
+      clearTimeout(noticeTimer.current);
       socket.off('whatsapp:status', onWaStatus);
       socket.off('whatsapp:qr', onWaQr);
     };
   }, []);
+
+  const flash = (text, error = false) => {
+    clearTimeout(noticeTimer.current);
+    setNotice({ text, error });
+    noticeTimer.current = setTimeout(() => setNotice(null), error ? 5000 : 2000);
+  };
+
+  // Sends only what changed.
+  const save = async (changes) => {
+    try {
+      const { data } = await api.put('/settings', changes);
+      setSettings(data);
+      flash('Saved ✓');
+    } catch (err) {
+      flash(err.response?.data?.error || 'Could not save. Please try again.', true);
+    }
+  };
+
+  const saveSchedule = async (changes) => {
+    const next = { ...schedule, ...changes };
+    setSchedule(next);
+    if (next.scheduleStart === next.scheduleEnd) {
+      flash('Start and end time cannot be the same.', true);
+      return;
+    }
+    try {
+      const { data } = await api.put('/settings/schedule', {
+        mode: next.mode,
+        scheduleStart: next.scheduleStart,
+        scheduleEnd: next.scheduleEnd,
+        scheduleDays: next.scheduleDays
+      });
+      setSchedule(data);
+      flash('Saved ✓');
+    } catch (err) {
+      flash(err.response?.data?.error || 'Could not save the timetable.', true);
+    }
+  };
+
+  const toggleDay = (day) => {
+    const current = schedule.scheduleDays || [];
+    saveSchedule({ scheduleDays: current.includes(day) ? current.filter((d) => d !== day) : [...current, day] });
+  };
 
   const handleConfirmLogout = async () => {
     setLoggingOut(true);
@@ -237,534 +289,333 @@ export default function Settings() {
     }
   };
 
-  // Keeps the number input in sync with the saved value, but only while rate
-  // limiting is on — while off (0), the input keeps whatever the owner last
-  // typed so toggling back on restores it instead of jumping to 0.
-  useEffect(() => {
-    if (settings?.rateLimitPerHour > 0) {
-      setRateLimitDraft(String(settings.rateLimitPerHour));
-    }
-  }, [settings?.rateLimitPerHour]);
-
-  const patch = (updates) => setSettings((prev) => ({ ...prev, ...updates }));
-
-  const save = async (overrides = {}) => {
-    setSaving(true);
-    try {
-      const payload = { ...settings, ...overrides };
-      const { data } = await api.put('/settings', payload);
-      setSettings(data);
-      setSavedAt(new Date());
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const patchSchedule = (updates) => {
-    setScheduleError('');
-    setSchedule((prev) => ({ ...prev, ...updates }));
-  };
-
-  const saveSchedule = async (overrides = {}) => {
-    const next = { ...schedule, ...overrides };
-    if (next.scheduleStart === next.scheduleEnd) {
-      setScheduleError('Start and end time cannot be identical.');
-      return;
-    }
-    setScheduleError('');
-    setScheduleSaving(true);
-    try {
-      const { data } = await api.put('/settings/schedule', {
-        mode: next.mode,
-        scheduleStart: next.scheduleStart,
-        scheduleEnd: next.scheduleEnd,
-        scheduleDays: next.scheduleDays
-      });
-      setSchedule(data);
-      setScheduleSavedAt(new Date());
-    } catch (err) {
-      setScheduleError(err.response?.data?.error || 'Could not save schedule.');
-    } finally {
-      setScheduleSaving(false);
-    }
-  };
-
-  const toggleRateLimit = () => {
-    if (settings.rateLimitPerHour > 0) {
-      save({ rateLimitPerHour: 0 });
-      return;
-    }
-    const restored = Number(rateLimitDraft);
-    save({ rateLimitPerHour: Number.isInteger(restored) && restored >= 1 && restored <= 100 ? restored : 10 });
-  };
-
-  const saveRateLimit = () => {
-    const value = Number(rateLimitDraft);
-    if (!Number.isInteger(value) || value < 1 || value > 100) {
-      setRateLimitError('Enter a whole number between 1 and 100.');
-      return;
-    }
-    setRateLimitError('');
-    save({ rateLimitPerHour: value });
-  };
-
-  const toggleDay = (day) => {
-    const current = schedule.scheduleDays || [];
-    const next = current.includes(day) ? current.filter((d) => d !== day) : [...current, day];
-    patchSchedule({ scheduleDays: next });
-    saveSchedule({ scheduleDays: next });
-  };
-
   if (!settings || !schedule) {
     return <p className="text-muted">Loading settings…</p>;
   }
 
-  const isOvernight = schedule.scheduleStart > schedule.scheduleEnd;
+  const status = getStatusDisplay(waStatus, loadingPercent, switchingAccount, sessionRecoveryFailed);
+  const connected = waStatus === 'ready' || waStatus === 'connected';
+  const voiceMode = settings.voiceReplyMode || 'auto';
+  // Keep a previously chosen value selectable even if it isn't one of the presets.
+  const rateLimits = RATE_LIMITS.includes(settings.rateLimitPerHour) ? RATE_LIMITS : [settings.rateLimitPerHour, ...RATE_LIMITS];
+  const costLimits = COST_LIMITS.includes(Number(settings.costLimitDaily))
+    ? COST_LIMITS
+    : [Number(settings.costLimitDaily), ...COST_LIMITS];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mx-auto flex max-w-3xl flex-col gap-4 sm:gap-6">
       <div>
         <h1 className="page-title">Settings</h1>
-        <p className="text-sm text-muted">Tune how Sheuli thinks, talks, and behaves.</p>
+        <p className="text-sm text-muted">Changes are saved automatically.</p>
       </div>
 
-      <div className="rounded-2xl border border-line bg-card px-4 py-3 text-xs text-muted">
-        🔒 Sheuli only replies to personal chats. Groups, communities, channels and broadcasts are always ignored.
-      </div>
-
-      <Section
-        title="WhatsApp Account"
-        description="Manage the WhatsApp account currently linked to Sheuli."
-      >
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${getStatusDisplay(waStatus, loadingPercent, switchingAccount, sessionRecoveryFailed).color} animate-pulse`} />
-              <span className="font-semibold text-ink">{getStatusDisplay(waStatus, loadingPercent, switchingAccount, sessionRecoveryFailed).text}</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-muted">
-              <p>
-                Number: <span className="font-mono font-medium text-ink">{waInfo?.number ? `+${waInfo.number}` : 'Not linked'}</span>
-              </p>
-              <p>
-                Name: <span className="font-medium text-ink">{waInfo?.name || '—'}</span>
-              </p>
-            </div>
-          </div>
+      <div role="tablist" className="card grid grid-cols-4 gap-1 p-1">
+        {TABS.map((item) => (
           <button
-            onClick={() => {
-              setLogoutError('');
-              setShowLogoutModal(true);
-            }}
-            disabled={waStatus === 'logging_out' || switchingAccount || loggingOut || saving}
-            className="w-fit rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-700 dark:text-red-300 shadow-glow-sm transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.id}
+            onClick={() => setTab(item.id)}
+            className={`flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-xs font-semibold transition sm:flex-row sm:justify-center sm:gap-2 sm:text-sm ${
+              tab === item.id ? 'bg-accent text-white' : 'text-muted hover:bg-soft hover:text-ink'
+            }`}
           >
-            Logout WhatsApp
+            <span aria-hidden="true">{item.icon}</span>
+            {item.label}
           </button>
-        </div>
+        ))}
+      </div>
 
-        {waStatus === 'qr' && waQr && (
-          <div className="mt-5 flex flex-col items-center gap-2 rounded-xl border border-line bg-soft p-4">
-            {sessionRecoveryFailed ? (
-              <p className="text-sm font-medium text-red-700 dark:text-red-300">
-                Session couldn't be restored — scan the QR below to reconnect.
-              </p>
-            ) : (
-              <p className="text-sm font-medium text-ink">Scan to link a new WhatsApp account:</p>
-            )}
-            {pairingRejectedHint && (
-              <p className="max-w-xs text-center text-xs font-medium text-yellow-700 dark:text-yellow-300">
-                ⚠️ Last pairing was accepted, then instantly rejected by WhatsApp — likely a web-version/library
-                incompatibility, not an account issue. Try updating whatsapp-web.js, or set WA_WEB_VERSION as a
-                stopgap.
-              </p>
-            )}
-            <div className="rounded-xl bg-white p-3 shadow-glow">
-              <img src={waQr} alt="Scan this QR code with WhatsApp" className="h-48 w-48" />
+      {tab === 'general' && (
+        <>
+          <Card title="Names">
+            <Row label="Assistant name" hint="What your assistant calls itself.">
+              <NameField value={settings.assistantName} placeholder="Sheuli" onSave={(v) => save({ assistantName: v })} />
+            </Row>
+            <Row label="Your name" hint="Empty means your WhatsApp account name.">
+              <NameField value={settings.ownerName} placeholder={settings.effectiveOwnerName} onSave={(v) => save({ ownerName: v })} />
+            </Row>
+          </Card>
+
+          <Card title="When should it reply?">
+            <div className="grid gap-3 pt-3 sm:grid-cols-2">
+              <Choice
+                selected={schedule.mode === 'manual'}
+                onClick={() => saveSchedule({ mode: 'manual' })}
+                title="I'll switch it myself"
+                text="Use the switch on Overview, or send /on and /off to yourself."
+              />
+              <Choice
+                selected={schedule.mode === 'schedule'}
+                onClick={() => saveSchedule({ mode: 'schedule' })}
+                title="On a timetable"
+                text="Replies only during the hours you pick."
+              />
             </div>
-            <p className="text-center text-xs text-muted">
-              Open WhatsApp → Linked Devices → Link a Device, then scan this code.
-            </p>
-            <p className="text-center text-[11px] text-muted/80">
-              QR refreshes automatically (~every 60s).
-            </p>
-          </div>
-        )}
-      </Section>
 
-      <Section
-        title="🩺 Diagnostics"
-        description="Live values, refreshed every 10s — check this first if something seems off."
-      >
-        {diagnosticsLoading && !diagnostics ? (
-          <p className="text-sm text-muted">Loading…</p>
-        ) : diagnostics ? (
-          <div className="flex flex-col gap-1">
-            <DiagRow
-              label="WhatsApp"
-              value={diagnostics.whatsapp.state}
-              tone={diagnostics.whatsapp.state === 'connected' ? 'good' : 'bad'}
-            />
-            <DiagRow label="My number" value={diagnostics.whatsapp.number || '—'} />
-            <DiagRow
-              label="Auto-reply"
-              value={diagnostics.autoReply.reason}
-              tone={diagnostics.autoReply.active ? 'good' : 'bad'}
-            />
-            <DiagRow label="Messages in DB" value={diagnostics.database.messageCount} />
-            <DiagRow label="DB path" value={diagnostics.database.path} />
-            <DiagRow
-              label="Today's cost"
-              value={`$${diagnostics.cost.todayEstimated.toFixed(4)} / $${diagnostics.cost.dailyLimit.toFixed(2)}`}
-            />
-            <DiagRow
-              label="OPENAI_API_KEY"
-              value={diagnostics.env.openaiApiKeyPresent ? 'present' : 'MISSING'}
-              tone={diagnostics.env.openaiApiKeyPresent ? 'good' : 'bad'}
-            />
-            <DiagRow label="Last incoming message" value={formatDiagnosticTime(diagnostics.lastIncomingAt)} />
-            <DiagRow label="Last reply sent" value={formatDiagnosticTime(diagnostics.lastReplyAt)} />
-            <DiagRow label="Server uptime" value={`${Math.floor(diagnostics.uptimeSeconds / 60)} min`} />
-          </div>
-        ) : (
-          <p className="text-sm text-red-700 dark:text-red-300">Could not load diagnostics.</p>
-        )}
-      </Section>
-
-      <Section title="Sheuli's personality" description="This is the core identity & language rules prompt sent to the AI on every reply.">
-        <div className="mb-3 rounded-xl border border-accent/30 bg-accent/10 px-3.5 py-2.5 text-xs text-accent-strong">
-          💡 <strong>Dynamic Mode Notice:</strong> Active Modes (Sleep 🌙, Class 🏫, Study 📚, Exam 📝, Driving 🚗) automatically inject live status instructions into every reply dynamically. You don't need to hardcode "sleeping" or "in class" here!
-        </div>
-        <textarea
-          value={settings.systemPrompt}
-          onChange={(e) => patch({ systemPrompt: e.target.value })}
-          rows={8}
-          className="font-bengali w-full rounded-xl border border-line bg-soft px-4 py-3 text-sm text-ink outline-none ring-accent/50 focus:ring-2"
-        />
-        <button
-          onClick={() => save({ systemPrompt: settings.systemPrompt })}
-          disabled={saving}
-          className="mt-3 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-glow-sm transition hover:bg-accent-hover disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : 'Save prompt'}
-        </button>
-      </Section>
-
-      <Section
-        title="🎙️ Voice Note & Voice Reply Settings"
-        description="Configure how Sheuli handles incoming WhatsApp voice notes and voice responses."
-      >
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-ink">Voice Auto-Reply Mode</p>
-              <p className="text-xs text-muted">
-                When enabled, Sheuli will reply using synthesized voice notes (TTS) for voice messages!
-              </p>
-            </div>
-            <select
-              value={settings.voiceReplyMode || 'auto'}
-              onChange={(e) => save({ voiceReplyMode: e.target.value })}
-              className="w-full rounded-xl border border-line bg-soft px-3 py-2 text-sm font-semibold text-accent-strong sm:w-auto"
-            >
-              <option value="auto">Smart Auto ⚡ (Voice for Voice 🎙️, Text for Text 💬)</option>
-              <option value="voice">Always Voice Note 🎙️ (TTS Voice for All)</option>
-              <option value="text">Always Text Reply 💬 (Text Only)</option>
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-ink">AI Voice Actor (Tone)</p>
-              <p className="text-xs text-muted">
-                Select the voice actor used when Sheuli generates audio responses.
-              </p>
-            </div>
-            <select
-              value={settings.ttsVoice || 'nova'}
-              onChange={(e) => save({ ttsVoice: e.target.value })}
-              className="w-full rounded-xl border border-line bg-soft px-3 py-2 text-sm font-semibold text-accent-strong sm:w-auto"
-            >
-              <option value="nova">Nova 🌸 (Sweet & Warm Female - Recommended)</option>
-              <option value="shimmer">Shimmer ✨ (Clear Female)</option>
-              <option value="alloy">Alloy 🎙️ (Neutral Assistant)</option>
-              <option value="echo">Echo 🎧 (Calm Male)</option>
-              <option value="fable">Fable 📖 (Expressive)</option>
-              <option value="onyx">Onyx 🔊 (Deep Male)</option>
-            </select>
-          </div>
-        </div>
-      </Section>
-
-      <Section
-        title="Schedule"
-        description="Choose whether Sheuli is controlled by the manual switch, or only wakes up during a set window."
-      >
-        <div className="flex flex-col gap-5">
-          <div className="inline-flex w-fit rounded-xl border border-line bg-soft p-1">
-            {['manual', 'schedule'].map((m) => (
-              <button
-                key={m}
-                onClick={() => saveSchedule({ mode: m })}
-                className={`rounded-lg px-4 py-1.5 text-sm font-medium capitalize transition-colors ${
-                  schedule.mode === m ? 'bg-accent text-white' : 'text-muted hover:text-ink'
-                }`}
-              >
-                {m === 'manual' ? 'Manual' : 'Scheduled'}
-              </button>
-            ))}
-          </div>
-
-          {schedule.mode === 'schedule' && (
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap items-center gap-6">
-                <label className="flex items-center gap-2 text-sm text-muted">
-                  Start
-                  <input
-                    type="time"
-                    value={schedule.scheduleStart}
-                    onChange={(e) => patchSchedule({ scheduleStart: e.target.value })}
-                    onBlur={() => saveSchedule()}
-                    className="rounded-lg border border-line bg-soft px-3 py-1.5 text-ink outline-none"
-                  />
-                </label>
-                <label className="flex items-center gap-2 text-sm text-muted">
-                  End
-                  <input
-                    type="time"
-                    value={schedule.scheduleEnd}
-                    onChange={(e) => patchSchedule({ scheduleEnd: e.target.value })}
-                    onBlur={() => saveSchedule()}
-                    className="rounded-lg border border-line bg-soft px-3 py-1.5 text-ink outline-none"
-                  />
-                </label>
-                <div className="text-sm text-muted">
-                  Timezone: <span className="text-ink">{schedule.timezone}</span>{' '}
-                  <span className="text-muted/70">(from server config)</span>
+            {schedule.mode === 'schedule' && (
+              <div className="mt-4 flex flex-col gap-4 pt-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    ['scheduleStart', 'From'],
+                    ['scheduleEnd', 'Until']
+                  ].map(([key, label]) => (
+                    <label key={key} className="text-sm font-semibold text-ink">
+                      {label}
+                      <input
+                        type="time"
+                        value={schedule[key]}
+                        onChange={(e) => setSchedule({ ...schedule, [key]: e.target.value })}
+                        onBlur={() => saveSchedule({})}
+                        className={`${FIELD} mt-1`}
+                      />
+                    </label>
+                  ))}
                 </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {WEEKDAYS.map((day) => {
-                  const active = (schedule.scheduleDays || []).includes(day);
-                  return (
-                    <button
-                      key={day}
-                      onClick={() => toggleDay(day)}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                        active
-                          ? 'border-accent/40 bg-accent/15 text-accent-strong'
-                          : 'border-line text-muted hover:text-ink'
-                      }`}
-                    >
-                      {day}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <p className="text-sm text-ink">
-                Sheuli will be awake {describeDays(schedule.scheduleDays)} from{' '}
-                <span className="font-semibold text-accent-strong">{formatTime12h(schedule.scheduleStart)}</span> to{' '}
-                <span className="font-semibold text-accent-strong">{formatTime12h(schedule.scheduleEnd)}</span> (
-                {schedule.timezone}).
-              </p>
-
-              {isOvernight && (
+                <div className="grid grid-cols-7 gap-1.5">
+                  {WEEKDAYS.map((day) => {
+                    const on = (schedule.scheduleDays || []).includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => toggleDay(day)}
+                        aria-pressed={on}
+                        className={`rounded-lg border py-2 text-xs font-semibold ${
+                          on ? 'border-accent bg-accent/10 text-accent-strong' : 'border-line text-muted'
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
                 <p className="text-xs text-muted">
-                  🌙 This window crosses midnight — Sheuli will be active overnight.
+                  Times are in {schedule.timezone}.
+                  {schedule.scheduleStart > schedule.scheduleEnd && ' This window runs overnight.'}
                 </p>
-              )}
-
-              {scheduleError && <p className="text-sm text-red-700 dark:text-red-300">{scheduleError}</p>}
-
-              <button
-                onClick={() => saveSchedule()}
-                disabled={scheduleSaving}
-                className="w-fit rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-glow-sm transition hover:bg-accent-hover disabled:opacity-50"
-              >
-                {scheduleSaving ? 'Saving…' : 'Save schedule'}
-              </button>
-            </div>
-          )}
-
-          {schedule.mode === 'manual' && (
-            <p className="text-xs text-muted">
-              Manual mode — control Sheuli from the master switch on the Overview page, or with /on and /off in
-              your own WhatsApp chat.
-            </p>
-          )}
-
-          {scheduleSavedAt && (
-            <p className="text-xs text-muted">Schedule saved at {scheduleSavedAt.toLocaleTimeString()}</p>
-          )}
-        </div>
-      </Section>
-
-
-      <Section title="Rate limit" description="Caps how many replies Sheuli sends to the same contact per hour.">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-ink">Enable rate limit</p>
-            <Toggle checked={settings.rateLimitPerHour > 0} onChange={toggleRateLimit} />
-          </div>
-
-          {settings.rateLimitPerHour > 0 ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-3">
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={rateLimitDraft}
-                  onChange={(e) => {
-                    setRateLimitDraft(e.target.value);
-                    setRateLimitError('');
-                  }}
-                  className="w-24 rounded-lg border border-line bg-soft px-3 py-2 text-ink outline-none"
-                />
-                <span className="text-xs text-muted">max replies per contact / hour</span>
-                <button
-                  onClick={saveRateLimit}
-                  disabled={saving}
-                  className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-glow-sm transition hover:bg-accent-hover disabled:opacity-50"
-                >
-                  {saving ? 'Saving…' : 'Save limit'}
-                </button>
               </div>
-              {rateLimitError && <p className="text-sm text-red-700 dark:text-red-300">{rateLimitError}</p>}
-            </div>
-          ) : (
-            <p className="text-xs text-yellow-700 dark:text-yellow-300">
-              ⚠️ Unlimited mode: Sheuli will reply to every message. This may increase API cost — the daily cost
-              guard still protects you.
-            </p>
-          )}
-        </div>
-      </Section>
+            )}
+          </Card>
+        </>
+      )}
 
-      <Section title="Model" description="Which OpenAI model Sheuli uses to write replies.">
-        <select
-          value={settings.model}
-          onChange={(e) => save({ model: e.target.value })}
-          className="rounded-lg border border-line bg-soft px-3 py-2 text-ink outline-none"
-        >
-          {MODEL_OPTIONS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </Section>
+      {tab === 'replies' && (
+        <>
+          <Card title="Voice notes">
+            <Row label="Reply with" hint="How to answer incoming messages.">
+              <select value={voiceMode} onChange={(e) => save({ voiceReplyMode: e.target.value })} className={FIELD}>
+                <option value="auto">Same as they sent</option>
+                <option value="text">Always text</option>
+                <option value="voice">Always voice</option>
+              </select>
+            </Row>
+            {voiceMode !== 'text' && (
+              <Row label="Voice">
+                <select value={settings.ttsVoice || 'nova'} onChange={(e) => save({ ttsVoice: e.target.value })} className={FIELD}>
+                  {VOICE_OPTIONS.map((voice) => (
+                    <option key={voice.value} value={voice.value}>
+                      {voice.label}
+                    </option>
+                  ))}
+                </select>
+              </Row>
+            )}
+          </Card>
 
-      <Section
-        title="Daily API cost guard"
-        description="Once today's estimated OpenAI cost hits this limit, Sheuli pauses auto-replies until midnight."
-      >
-        <div className="flex items-center gap-3">
-          <span className="text-muted">$</span>
-          <input
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={settings.costLimitDaily}
-            onChange={(e) => patch({ costLimitDaily: e.target.value })}
-            className="w-32 rounded-lg border border-line bg-soft px-3 py-2 text-ink outline-none"
-          />
-          <button
-            onClick={() => save({ costLimitDaily: Number(settings.costLimitDaily) })}
-            disabled={saving}
-            className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-glow-sm transition hover:bg-accent-hover disabled:opacity-50"
-          >
-            {saving ? 'Saving…' : 'Save limit'}
-          </button>
-        </div>
-        <p className="mt-2 text-xs text-muted">Default: $0.50/day. Resets at local midnight ({schedule.timezone}).</p>
-      </Section>
+          <Card title="Limits" hint="These protect you from spam and surprise bills.">
+            <Row label="Replies per person" hint="Most replies to one contact in an hour.">
+              <select
+                value={settings.rateLimitPerHour}
+                onChange={(e) => save({ rateLimitPerHour: Number(e.target.value) })}
+                className={FIELD}
+              >
+                {rateLimits.map((n) => (
+                  <option key={n} value={n}>
+                    {n === 0 ? 'No limit' : `${n} per hour`}
+                  </option>
+                ))}
+              </select>
+            </Row>
+            <Row label="Daily spending limit" hint="Replies pause until midnight once reached.">
+              <select
+                value={Number(settings.costLimitDaily)}
+                onChange={(e) => save({ costLimitDaily: Number(e.target.value) })}
+                className={FIELD}
+              >
+                {costLimits.map((n) => (
+                  <option key={n} value={n}>
+                    ${n.toFixed(2)} per day
+                  </option>
+                ))}
+              </select>
+            </Row>
+            <Row label="AI model">
+              <select value={settings.model} onChange={(e) => save({ model: e.target.value })} className={FIELD}>
+                {MODEL_OPTIONS.map((model) => (
+                  <option key={model.value} value={model.value}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+            </Row>
+          </Card>
+          <p className="text-xs text-muted">🔒 Only personal chats get replies. Groups, channels and broadcasts are always ignored.</p>
+        </>
+      )}
 
-      <Section
-        title="🌅 Daily Summary"
-        description="Every morning Sheuli sends a Bangla recap of everything that happened while she was on duty to your own WhatsApp chat."
-      >
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-ink">Enable daily summary</p>
+      {tab === 'summary' && (
+        <Card title="Daily summary" hint="A short Bangla recap, sent to your own WhatsApp chat.">
+          <Row label="Send me a summary">
             <Toggle
+              label="Daily summary"
               checked={Boolean(settings.dailySummaryEnabled)}
               onChange={() => save({ dailySummaryEnabled: !settings.dailySummaryEnabled })}
             />
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-muted">
-            Send at
-            <input
-              type="time"
-              value={settings.dailySummaryTime}
-              onChange={(e) => patch({ dailySummaryTime: e.target.value })}
-              onBlur={() => save({ dailySummaryTime: settings.dailySummaryTime })}
-              className="rounded-lg border border-line bg-soft px-3 py-1.5 text-ink outline-none"
-            />
-            <span className="text-muted/70">({schedule.timezone})</span>
-          </label>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-ink">Skip if no messages</p>
-              <p className="text-xs text-muted">When on, sends nothing instead of the "no messages" note.</p>
-            </div>
-            <Toggle
-              checked={Boolean(settings.dailySummarySkipIfEmpty)}
-              onChange={() => save({ dailySummarySkipIfEmpty: !settings.dailySummarySkipIfEmpty })}
-            />
-          </div>
-
-          <p className="text-xs text-muted">
-            You can also request one anytime by sending <span className="font-mono text-ink">/summary</span> to your own
-            "Message Yourself" chat. Past summaries are on the Logs page.
+          </Row>
+          {Boolean(settings.dailySummaryEnabled) && (
+            <>
+              <Row label="Time" hint={schedule.timezone}>
+                <input
+                  type="time"
+                  value={settings.dailySummaryTime}
+                  onChange={(e) => setSettings({ ...settings, dailySummaryTime: e.target.value })}
+                  onBlur={() => save({ dailySummaryTime: settings.dailySummaryTime })}
+                  className={FIELD}
+                />
+              </Row>
+              <Row label="Skip quiet days" hint="Send nothing when there were no messages.">
+                <Toggle
+                  label="Skip quiet days"
+                  checked={Boolean(settings.dailySummarySkipIfEmpty)}
+                  onChange={() => save({ dailySummarySkipIfEmpty: !settings.dailySummarySkipIfEmpty })}
+                />
+              </Row>
+            </>
+          )}
+          <p className="pt-4 text-xs text-muted">
+            Want one now? Send <span className="font-mono font-semibold text-ink">/summary</span> to yourself. Old ones are on
+            the Logs page.
           </p>
+        </Card>
+      )}
+
+      {tab === 'account' && (
+        <>
+          <Card title="WhatsApp">
+            <div className="flex flex-col gap-3 pt-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="flex items-center gap-2 font-semibold text-ink">
+                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${status.color}`} />
+                  {status.text}
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  {waInfo?.number ? `+${waInfo.number}` : 'No account linked'}
+                  {waInfo?.name ? ` · ${waInfo.name}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setLogoutError('');
+                  setShowLogoutModal(true);
+                }}
+                disabled={waStatus === 'logging_out' || switchingAccount || loggingOut}
+                className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-500/20 disabled:opacity-50 dark:text-red-300"
+              >
+                Log out WhatsApp
+              </button>
+            </div>
+
+            {waStatus === 'qr' && waQr && (
+              <div className="mt-4 flex flex-col items-center gap-2 pt-4 text-center">
+                {pairingRejectedHint && (
+                  <p className="max-w-xs text-xs font-medium text-yellow-700 dark:text-yellow-300">
+                    ⚠️ WhatsApp rejected the last link right after accepting it. Try updating whatsapp-web.js.
+                  </p>
+                )}
+                <div className="rounded-2xl border border-line bg-white p-3">
+                  <img src={waQr} alt="Scan this QR code with WhatsApp" className="h-48 w-48" />
+                </div>
+                <p className="text-xs text-muted">On your phone: WhatsApp → Linked Devices → Link a Device.</p>
+              </div>
+            )}
+          </Card>
+
+          <details className="card p-4 sm:p-6">
+            <summary className="cursor-pointer text-sm font-bold text-brand">Technical details (for troubleshooting)</summary>
+            {diagnostics ? (
+              <div className="mt-3 divide-y divide-line">
+                <InfoRow label="WhatsApp" value={diagnostics.whatsapp.state} good={connected} />
+                <InfoRow label="Auto-reply" value={diagnostics.autoReply.reason} good={diagnostics.autoReply.active} />
+                <InfoRow
+                  label="OpenAI key"
+                  value={diagnostics.env.openaiApiKeyPresent ? 'added' : 'MISSING'}
+                  good={diagnostics.env.openaiApiKeyPresent}
+                />
+                <InfoRow
+                  label="Today's cost"
+                  value={`$${diagnostics.cost.todayEstimated.toFixed(4)} / $${diagnostics.cost.dailyLimit.toFixed(2)}`}
+                />
+                <InfoRow label="Last message received" value={formatDiagnosticTime(diagnostics.lastIncomingAt)} />
+                <InfoRow label="Last reply sent" value={formatDiagnosticTime(diagnostics.lastReplyAt)} />
+                <InfoRow label="Messages stored" value={diagnostics.database.messageCount} />
+                <InfoRow label="Database file" value={diagnostics.database.path} />
+                <InfoRow label="Running for" value={`${Math.floor(diagnostics.uptimeSeconds / 60)} min`} />
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted">Loading…</p>
+            )}
+          </details>
+        </>
+      )}
+
+      {notice && (
+        <div
+          role="status"
+          className={`fixed bottom-24 left-1/2 z-50 w-max max-w-[90vw] -translate-x-1/2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-card md:bottom-8 ${
+            notice.error ? 'bg-red-600' : 'bg-emerald-600'
+          }`}
+        >
+          {notice.text}
         </div>
-      </Section>
-
-
-      {savedAt && <p className="text-xs text-muted">Saved at {savedAt.toLocaleTimeString()}</p>}
+      )}
 
       {showLogoutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl border border-line bg-card p-6 shadow-2xl shadow-card">
-            <h3 className="text-lg font-bold text-ink">Logout WhatsApp?</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-line bg-card p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-ink">Log out WhatsApp?</h3>
             <p className="mt-3 text-sm leading-relaxed text-muted">
-              This will unlink the current WhatsApp account ({waInfo?.number ? `+${waInfo.number}` : 'the currently linked account'}). Sheuli will stop replying until you scan the QR code with an account. This does NOT delete your chat history or settings.
+              {assistant} will stop replying until you scan a new QR code. Your chat history and settings stay.
             </p>
-            
-            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-soft p-3.5 transition hover:border-accent/40">
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-soft p-3.5">
               <input
                 type="checkbox"
                 checked={clearHistoryCheckbox}
                 onChange={(e) => setClearHistoryCheckbox(e.target.checked)}
                 disabled={loggingOut}
-                className="mt-0.5 h-4 w-4 rounded border-line bg-soft text-accent accent-accent focus:ring-0"
+                className="mt-0.5 h-4 w-4 accent-accent"
               />
-              <span className="text-xs font-medium text-ink">
-                Also clear all chat history and conversation memory
-              </span>
+              <span className="text-xs font-medium text-ink">Also delete all chat history and memory</span>
             </label>
-
-            {logoutError && <p className="mt-3 text-xs text-red-700 dark:text-red-300">{logoutError}</p>}
-
-            <div className="mt-6 flex items-center justify-end gap-3">
+            {logoutError && <p className="mt-3 text-xs text-red-500">{logoutError}</p>}
+            <div className="mt-6 flex justify-end gap-3">
               <button
+                type="button"
                 onClick={() => !loggingOut && setShowLogoutModal(false)}
                 disabled={loggingOut}
-                className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted transition hover:bg-soft hover:text-ink disabled:opacity-50"
+                className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-muted hover:bg-soft hover:text-ink disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleConfirmLogout}
                 disabled={loggingOut}
-                className="rounded-xl bg-red-500 px-5 py-2 text-sm font-semibold text-white shadow-glow-sm transition hover:bg-red-600 disabled:opacity-50"
+                className="rounded-xl bg-red-500 px-5 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
               >
-                {loggingOut ? 'Logging out…' : 'Logout'}
+                {loggingOut ? 'Logging out…' : 'Log out'}
               </button>
             </div>
           </div>

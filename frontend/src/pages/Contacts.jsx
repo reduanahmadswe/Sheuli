@@ -1,3 +1,4 @@
+import { useAssistantName } from '../lib/identity.js';
 import { useEffect, useState } from 'react';
 import api from '../lib/api.js';
 import { getDisplayName, formatPhoneNumber } from '../lib/formatContact.js';
@@ -36,6 +37,7 @@ function Toggle({ checked, onChange, label }) {
 }
 
 export default function Contacts() {
+  const assistant = useAssistantName();
   const [contacts, setContacts] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -83,7 +85,7 @@ export default function Contacts() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Contacts</h1>
-          <p className="text-sm text-muted">Everyone who has messaged you, and how Sheuli treats them.</p>
+          <p className="text-sm text-muted">Everyone who has messaged you, and how {assistant} treats them.</p>
         </div>
         <button
           onClick={syncContacts}

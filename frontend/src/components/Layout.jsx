@@ -4,6 +4,7 @@ import Logo from './Logo.jsx';
 import ThemeToggle from './ThemeToggle.jsx';
 import useAuth from '../hooks/useAuth.js';
 import getSocket from '../lib/socket.js';
+import { setAssistantName, useAssistantName } from '../lib/identity.js';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Overview', short: 'Home', icon: '🌸', end: true },
@@ -44,8 +45,16 @@ function SocketStatusDot() {
 }
 
 export default function Layout({ children }) {
+  const assistant = useAssistantName();
   const { logout } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const socket = getSocket();
+    const onSettings = (settings) => setAssistantName(settings.assistantName);
+    socket.on('settings:updated', onSettings);
+    return () => socket.off('settings:updated', onSettings);
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -60,7 +69,7 @@ export default function Layout({ children }) {
             <Logo size={36} />
             <div>
               <div className="flex items-center gap-1.5">
-                <p className="text-lg font-extrabold leading-none tracking-tight text-brand">Sheuli</p>
+                <p className="text-lg font-extrabold leading-none tracking-tight text-brand">{assistant}</p>
                 <SocketStatusDot />
               </div>
               <p className="mt-1 hidden text-[11px] leading-none text-muted sm:block">She blooms while you sleep.</p>

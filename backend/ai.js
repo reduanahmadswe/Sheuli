@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import config from './config.js';
 import { getAllSettings } from './db.js';
 import logger from './logger.js';
+import { buildSystemPrompt, buildFallback } from './prompt.js';
 
 export const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
@@ -25,22 +26,7 @@ function detectLanguageHint(text) {
   return 'english';
 }
 
-// Used when OpenAI cannot be reached, so the reply still reflects the active
-// mode and the sender's language instead of one fixed line.
-export function buildFallbackMessage(activity, languageHint) {
-  if (activity?.type !== 'mode') return config.defaults.fallbackMessage;
-  const mode = activity.info?.name || activity.title;
-  const owner = config.ownerName;
-  if (languageHint === 'english') {
-    return `${owner} is not available right now (${mode}) and will reply later. — Sheuli 🌸`;
-  }
-  if (languageHint === 'banglish') {
-    return `${owner} ekhon available nei (${mode}), pore reply korbe. — Sheuli 🌸`;
-  }
-  return `${owner} এখন available নেই (${mode}), পরে reply করবে। — Sheuli 🌸`;
-}
-
-function buildMessages({ systemPrompt, history, incomingBody, isFirstReply, languageHint, activityContext, modeContext, scheduleContext }) {
+function buildMessages({ owner, systemPrompt, history, incomingBody, isFirstReply, languageHint, activityContext, modeContext, scheduleContext }) {
   const messages = [{ role: 'system', content: systemPrompt }];
 
   if (scheduleContext) {
@@ -85,7 +71,7 @@ function buildMessages({ systemPrompt, history, incomingBody, isFirstReply, lang
   } else if (incomingBody.includes('[Voice Note Received]')) {
     messages.push({
       role: 'system',
-      content: 'The user sent a voice message. Inform them warmly that you received their voice note and Reduan will listen to it soon.'
+      content: 'The user sent a voice message. Inform them warmly that you received their voice note and ' + owner + ' will listen to it soon.'
     });
   }
 
@@ -105,9 +91,11 @@ export async function generateReply({
 }) {
   const settings = getAllSettings();
   const languageHint = detectLanguageHint(incomingBody);
+  const names = { assistant: settings.assistantName, owner: settings.effectiveOwnerName };
 
   const messages = buildMessages({
-    systemPrompt: settings.systemPrompt,
+    owner: names.owner,
+    systemPrompt: buildSystemPrompt(names),
     history,
     incomingBody,
     isFirstReply,
@@ -142,7 +130,7 @@ export async function generateReply({
     logger.error({ err: err.message, contactId }, 'OpenAI request failed, using fallback message');
 
     return {
-      reply: buildFallbackMessage(currentActivity, languageHint),
+      reply: buildFallback(names, languageHint, currentActivity?.type === 'mode' ? currentActivity.title : ''),
       promptTokens: 0,
       completionTokens: 0,
       fallback: true

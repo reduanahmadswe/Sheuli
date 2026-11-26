@@ -88,28 +88,6 @@ export function getDb() {
   return db;
 }
 
-// One-time upgrade: earlier versions persisted a systemPrompt without the
-// language-mirroring rule. If the stored value is still byte-for-byte that old
-// default (i.e. the owner never customized it), refresh it to the current
-// default so the language rule actually takes effect. A customized prompt is
-// never touched.
-const LEGACY_SYSTEM_PROMPT =
-  'তোমার নাম Sheuli (শিউলি)। তুমি Reduan-এর personal AI assistant। Reduan এখন busy বা ঘুমাচ্ছে। ' +
-  'ভদ্রভাবে, উষ্ণভাবে এবং সংক্ষেপে (১–২ লাইন) reply দাও। User বাংলায় লিখলে বাংলায়, ইংরেজিতে লিখলে ইংরেজিতে উত্তর দাও। ' +
-  "কোনো contact-এর সাথে session-এর প্রথম reply-তে নিজের পরিচয় দাও, যেমন: 'হাই! আমি Sheuli, Reduan-এর AI assistant 🌸 ও এখন available নেই...'। " +
-  'জরুরি বিষয় হলে call করতে বলো। Reduan-এর হয়ে কখনো কোনো promise বা commitment দিও না। কোনো personal/private তথ্য share করো না। ' +
-  'কেউ অভদ্র আচরণ করলেও ভদ্র থাকো।';
-
-{
-  const storedPrompt = db.prepare('SELECT value FROM settings WHERE key = ?').get('systemPrompt');
-  if (storedPrompt && storedPrompt.value === LEGACY_SYSTEM_PROMPT) {
-    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(
-      'systemPrompt',
-      config.defaults.systemPrompt
-    );
-  }
-}
-
 // One-time upgrade: earlier versions hard-coded rateLimitPerHour's default at
 // 3, which got persisted into the settings table on installs that never
 // touched it. The new default is 10 — but config.defaults only applies when
@@ -185,6 +163,15 @@ export function setSetting(key, value) {
   return value;
 }
 
+// Names are free text that ends up in prompts and messages: one line, short.
+export function cleanName(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+
+function getName(key) {
+  return cleanName(getSettingStmt.get(key)?.value);
+}
+
 export function getAllSettings() {
   const d = config.defaults;
   // Legacy fallback: earlier versions stored a plain `scheduleEnabled` boolean.
@@ -205,7 +192,10 @@ export function getAllSettings() {
     // Timezone always comes from the server's TIMEZONE env var, never a stored
     // setting — the VPS may run in a different zone than the schedule expects.
     timezone: config.timezone,
-    systemPrompt: getSetting('systemPrompt', d.systemPrompt),
+    assistantName: getName('assistantName') || d.assistantName,
+    ownerName: getName('ownerName'),
+    // What replies actually call the owner: the saved name, else the linked account's.
+    effectiveOwnerName: getName('ownerName') || getName('accountName') || 'the owner',
     rateLimitPerHour: getSetting('rateLimitPerHour', d.rateLimitPerHour),
     model: getSetting('model', d.model),
     costLimitDaily: getSetting('costLimitDaily', d.costLimitDaily),

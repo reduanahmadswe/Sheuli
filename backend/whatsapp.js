@@ -235,7 +235,7 @@ async function handleSelfCommand(message, body) {
     return true;
   }
 
-  if (command.startsWith('/schedule') || command.startsWith('sheuli, schedule') || command.startsWith('schedule ')) {
+  if (command.startsWith('/schedule') || command.startsWith(`${getAllSettings().assistantName.toLowerCase()}, schedule`) || command.startsWith('schedule ')) {
     try {
       const parsed = parseNaturalLanguageEvent(body);
       const saved = saveCalendarEvent(getDb(), parsed);
@@ -256,8 +256,8 @@ async function handleSelfCommand(message, body) {
   // anything — the schedule is the single source of truth for when Sheuli replies.
   if (settings.mode === 'schedule') {
     await message.reply(
-      `🌙 Sheuli is in schedule mode (${settings.scheduleStart}–${settings.scheduleEnd}). ` +
-        'Switch to manual mode from the dashboard to control her manually.'
+      `🌙 ${settings.assistantName} is in schedule mode (${settings.scheduleStart}–${settings.scheduleEnd}). ` +
+        'Switch to manual mode from the dashboard to control it manually.'
     );
     return true;
   }
@@ -265,19 +265,24 @@ async function handleSelfCommand(message, body) {
   if (command === '/on') {
     setSetting('autoReplyEnabled', true);
     ioRef?.emit('settings:updated', getAllSettings());
-    await message.reply('🌸 Sheuli is now ON');
+    await message.reply(`🌸 ${settings.assistantName} is now ON`);
     return true;
   }
 
   setSetting('autoReplyEnabled', false);
   ioRef?.emit('settings:updated', getAllSettings());
-  await message.reply('🌙 Sheuli is now OFF');
+  await message.reply(`🌙 ${settings.assistantName} is now OFF`);
   return true;
 }
 
 // Only these are ever treated as commands, so ordinary outgoing messages are
 // dismissed before any chat-ID lookup.
-const SELF_COMMAND_RE = /^(\/(on|off|summary)$|\/schedule|sheuli, schedule|schedule )/i;
+const SELF_COMMAND_RE = /^(\/(on|off|summary)$|\/schedule|schedule )/i;
+
+function isSelfCommand(body) {
+  const named = `${getAllSettings().assistantName.toLowerCase()}, schedule`;
+  return SELF_COMMAND_RE.test(body) || body.toLowerCase().startsWith(named);
+}
 
 // "Message Yourself" can be addressed by the account's phone-number ID (@c.us)
 // or by its LID (@lid), so a message to either one counts as the self chat.
@@ -300,7 +305,7 @@ async function isSelfChatId(chatId) {
 async function handleOwnMessage(message) {
   if (switchingAccount || !message.fromMe) return;
   const body = (message.body || '').trim();
-  if (!SELF_COMMAND_RE.test(body)) return;
+  if (!isSelfCommand(body)) return;
 
   // Never replay an old command synced from history on reconnect.
   const msgSec = message.timestamp || 0;
@@ -1136,6 +1141,9 @@ function attachListeners(clientInstance) {
     logoutDisconnectTimestamps = [];
     sessionRecoveryFailed = false;
     emitStatus('ready');
+    // The linked account's own name is the default for what replies call the owner.
+    setSetting('accountName', clientInstance.info?.pushname || '');
+    ioRef?.emit('settings:updated', getAllSettings());
     if (!hasLoggedReady) {
       hasLoggedReady = true;
       const widUser =

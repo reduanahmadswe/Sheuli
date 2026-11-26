@@ -122,16 +122,22 @@ export function getActiveModeDetails(settings, db = null, now = new Date()) {
   };
 }
 
+const fillOwner = (text, settings) => text.replaceAll('{owner}', () => settings.effectiveOwnerName || 'the owner');
+
 export function getActivitySystemInstruction(activity, settings = {}) {
+  return fillOwner(activityTemplate(activity, settings), settings);
+}
+
+function activityTemplate(activity, settings) {
   if (!activity) {
-    return 'CURRENT STATUS & INSTRUCTION: Normal Assistant Mode 🌸. Reduan is away from his phone right now.';
+    return 'CURRENT STATUS & INSTRUCTION: Normal Assistant Mode 🌸. {owner} is away from the phone right now.';
   }
 
   if (activity.type === 'calendar') {
     return (
       `CRITICAL TOP PRIORITY - CURRENT LIVE CALENDAR ACTIVITY (MUST MENTION):\n` +
-      `Reduan is CURRENTLY busy with: "${activity.title}" (from ${activity.startTime} to ${activity.endTime}).\n` +
-      `INSTRUCTION: You MUST politely, warmly, and clearly state to the sender that Reduan is currently busy with "${activity.title}" and will be available after ${activity.endTime}. Do not make any promises on his behalf.`
+      `{owner} is CURRENTLY busy with: "${activity.title}" (from ${activity.startTime} to ${activity.endTime}).\n` +
+      `INSTRUCTION: You MUST politely, warmly, and clearly state to the sender that {owner} is currently busy with "${activity.title}" and will be available after ${activity.endTime}. Do not make any promises on {owner}'s behalf.`
     );
   }
 
@@ -141,6 +147,10 @@ export function getActivitySystemInstruction(activity, settings = {}) {
 
 
 export function getModeSystemInstruction(modeDetails, settings = {}) {
+  return fillOwner(modeTemplate(modeDetails, settings), settings);
+}
+
+function modeTemplate(modeDetails, settings) {
   const { mode } = modeDetails;
 
   const customKey = `modePrompt_${mode}`;
@@ -151,173 +161,173 @@ export function getModeSystemInstruction(modeDetails, settings = {}) {
   switch (mode) {
     case 'sleep':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is currently SLEEPING 🌙 (Sleep Mode).\n' +
-        'Inform the sender warmly that Reduan is asleep and will reply in the morning.\n' +
-        'If it is an URGENT emergency, tell them to reply with the word "EMERGENCY" to alert Reduan.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is currently SLEEPING 🌙 (Sleep Mode).\n' +
+        'Inform the sender warmly that {owner} is asleep and will reply in the morning.\n' +
+        'If it is an URGENT emergency, tell them to reply with the word "EMERGENCY" to alert {owner}.'
       );
     case 'home':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is AT HOME / HOMETOWN 🏡 spending time with family.\n' +
-        'Inform the sender warmly that Reduan is at home with family and will reply when free.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is AT HOME / HOMETOWN 🏡 spending time with family.\n' +
+        'Inform the sender warmly that {owner} is at home with family and will reply when free.'
       );
     case 'commute':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is COMMUTING 🚌 (on bus, train or in transit).\n' +
-        'Inform the sender politely that Reduan is in transit/on the move and will check messages after reaching.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is COMMUTING 🚌 (on bus, train or in transit).\n' +
+        'Inform the sender politely that {owner} is in transit/on the move and will check messages after reaching.'
       );
     case 'shopping':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is SHOPPING / AT THE MARKET 🛒.\n' +
-        'Inform the sender politely that Reduan is out shopping and will check messages after finishing.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is SHOPPING / AT THE MARKET 🛒.\n' +
+        'Inform the sender politely that {owner} is out shopping and will check messages after finishing.'
       );
     case 'adda':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is HANGING OUT / ADDA WITH FRIENDS ☕.\n' +
-        'Inform the sender in a friendly tone that Reduan is hanging out with friends and will reply shortly.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is HANGING OUT / ADDA WITH FRIENDS ☕.\n' +
+        'Inform the sender in a friendly tone that {owner} is hanging out with friends and will reply shortly.'
       );
     case 'movie':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is WATCHING A MOVIE / SHOW 🎬.\n' +
-        'Inform the sender politely that Reduan is watching a movie and will reply after the show ends.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is WATCHING A MOVIE / SHOW 🎬.\n' +
+        'Inform the sender politely that {owner} is watching a movie and will reply after the show ends.'
       );
     case 'barber':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is AT THE SALON / BARBER 💈.\n' +
-        'Inform the sender politely that Reduan is at the salon and will check messages soon.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is AT THE SALON / BARBER 💈.\n' +
+        'Inform the sender politely that {owner} is at the salon and will check messages soon.'
       );
     case 'errands':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is OUT RUNNING PERSONAL ERRANDS 🏃.\n' +
-        'Inform the sender politely that Reduan is busy outside with errands and will reply after returning.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is OUT RUNNING PERSONAL ERRANDS 🏃.\n' +
+        'Inform the sender politely that {owner} is busy outside with errands and will reply after returning.'
       );
     case 'lowbat':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan\'s PHONE BATTERY IS VERY LOW 🪫.\n' +
-        'Inform the sender that Reduan\'s phone is about to die/charging, so responses might be delayed until charged.'
+        'CURRENT STATUS & INSTRUCTION: {owner}\'s PHONE BATTERY IS VERY LOW 🪫.\n' +
+        'Inform the sender that {owner}\'s phone is about to die/charging, so responses might be delayed until charged.'
       );
     case 'medical':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is AT A MEDICAL APPOINTMENT / HOSPITAL 🏥.\n' +
-        'Inform the sender politely that Reduan is at a doctor appointment/hospital and will reply when free.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is AT A MEDICAL APPOINTMENT / HOSPITAL 🏥.\n' +
+        'Inform the sender politely that {owner} is at a doctor appointment/hospital and will reply when free.'
       );
     case 'rainy':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is STUCK IN HEAVY RAIN / TRAFFIC JAM 🌧️.\n' +
-        'Inform the sender politely that Reduan is stuck in rain/traffic and will check messages after getting to safety.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is STUCK IN HEAVY RAIN / TRAFFIC JAM 🌧️.\n' +
+        'Inform the sender politely that {owner} is stuck in rain/traffic and will check messages after getting to safety.'
       );
     case 'party':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is AT A WEDDING / PARTY / EVENT 🎉.\n' +
-        'Inform the sender politely that Reduan is attending an event/party and will reply after the event.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is AT A WEDDING / PARTY / EVENT 🎉.\n' +
+        'Inform the sender politely that {owner} is attending an event/party and will reply after the event.'
       );
     case 'teabreak':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is ON A SHORT TEA BREAK 🫖.\n' +
-        'Inform the sender warmly that Reduan is taking a 10-min tea break and will reply shortly.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is ON A SHORT TEA BREAK 🫖.\n' +
+        'Inform the sender warmly that {owner} is taking a 10-min tea break and will reply shortly.'
       );
     case 'chores':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is BUSY WITH HOUSE CHORES / CLEANING 🧹.\n' +
-        'Inform the sender politely that Reduan is busy with house chores and will check messages after finishing.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is BUSY WITH HOUSE CHORES / CLEANING 🧹.\n' +
+        'Inform the sender politely that {owner} is busy with house chores and will check messages after finishing.'
       );
     case 'oncall':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is ON ANOTHER PHONE CALL 📞.\n' +
-        'Inform the sender politely that Reduan is currently on a phone call and will reply after hanging up.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is ON ANOTHER PHONE CALL 📞.\n' +
+        'Inform the sender politely that {owner} is currently on a phone call and will reply after hanging up.'
       );
     case 'charging':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan\'s PHONE IS CHARGING AWAY 🔌.\n' +
-        'Inform the sender that Reduan\'s phone is charging in another room and he will check messages when back at the desk.'
+        'CURRENT STATUS & INSTRUCTION: {owner}\'s PHONE IS CHARGING AWAY 🔌.\n' +
+        'Inform the sender that {owner}\'s phone is charging in another room and they will check messages when back at the desk.'
       );
     case 'reading':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is READING A BOOK / NOVEL 📖.\n' +
-        'Inform the sender politely that Reduan is quietly reading and will reply after taking a break.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is READING A BOOK / NOVEL 📖.\n' +
+        'Inform the sender politely that {owner} is quietly reading and will reply after taking a break.'
       );
     case 'outdoors':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is OUTDOORS / AT A PARK 🏕️.\n' +
-        'Inform the sender warmly that Reduan is outdoors enjoying nature and will reply when back.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is OUTDOORS / AT A PARK 🏕️.\n' +
+        'Inform the sender warmly that {owner} is outdoors enjoying nature and will reply when back.'
       );
     case 'thinking':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is BRAINSHORMING / STRATEGY THINKING 🧠.\n' +
-        'Inform the sender politely that Reduan is deep in thought/planning and will get back to them when free.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is BRAINSHORMING / STRATEGY THINKING 🧠.\n' +
+        'Inform the sender politely that {owner} is deep in thought/planning and will get back to them when free.'
       );
     case 'class':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is currently in CLASS 🏫.\n' +
-        'Inform the sender politely that Reduan is attending class right now and will check messages once class ends.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is currently in CLASS 🏫.\n' +
+        'Inform the sender politely that {owner} is attending class right now and will check messages once class ends.'
       );
     case 'study':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is in FOCUS / STUDY MODE 📚.\n' +
-        'Politely inform the sender that Reduan is currently studying/focusing and will get back to them when free.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is in FOCUS / STUDY MODE 📚.\n' +
+        'Politely inform the sender that {owner} is currently studying/focusing and will get back to them when free.'
       );
     case 'exam':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan has EXAMS 📝 today.\n' +
-        'Politely inform the sender that Reduan is currently taking exams and will reply after exams are completed.'
+        'CURRENT STATUS & INSTRUCTION: {owner} has EXAMS 📝 today.\n' +
+        'Politely inform the sender that {owner} is currently taking exams and will reply after exams are completed.'
       );
     case 'lab':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is currently in a UNIVERSITY LAB SESSION 🔬.\n' +
-        'Inform the sender politely that Reduan is conducting a lab experiment and cannot respond immediately.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is currently in a UNIVERSITY LAB SESSION 🔬.\n' +
+        'Inform the sender politely that {owner} is conducting a lab experiment and cannot respond immediately.'
       );
     case 'meeting':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is in an IMPORTANT MEETING 💼.\n' +
-        'Inform the sender politely that Reduan is in a meeting and will reply as soon as the meeting finishes.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is in an IMPORTANT MEETING 💼.\n' +
+        'Inform the sender politely that {owner} is in a meeting and will reply as soon as the meeting finishes.'
       );
     case 'coding':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is in DEEP CODING MODE 💻.\n' +
-        'Politely inform the sender that Reduan is programming/debugging and will check messages after completing the sprint.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is in DEEP CODING MODE 💻.\n' +
+        'Politely inform the sender that {owner} is programming/debugging and will check messages after completing the sprint.'
       );
     case 'dnd':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is in DO NOT DISTURB / DIGITAL DETOX 🛑.\n' +
-        'Politely inform the sender that Reduan is away from screens right now. Ask them to leave a message.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is in DO NOT DISTURB / DIGITAL DETOX 🛑.\n' +
+        'Politely inform the sender that {owner} is away from screens right now. Ask them to leave a message.'
       );
     case 'prayer':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is currently in PRAYER / NAMAZ 🕌.\n' +
-        'Inform the sender warmly that Reduan is praying right now and will reply right after prayer.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is currently in PRAYER / NAMAZ 🕌.\n' +
+        'Inform the sender warmly that {owner} is praying right now and will reply right after prayer.'
       );
     case 'dining':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is currently HAVING DINNER / MEAL 🍽️.\n' +
-        'Inform the sender warmly that Reduan is eating and will reply after finishing the meal.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is currently HAVING DINNER / MEAL 🍽️.\n' +
+        'Inform the sender warmly that {owner} is eating and will reply after finishing the meal.'
       );
     case 'resting':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is RESTING / UNWELL 🤒.\n' +
-        'Inform the sender warmly that Reduan is resting and will reach out when feeling better.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is RESTING / UNWELL 🤒.\n' +
+        'Inform the sender warmly that {owner} is resting and will reach out when feeling better.'
       );
     case 'driving':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is DRIVING / COMMUTING 🚗.\n' +
-        'Politely inform the sender that Reduan is driving and will check messages after reaching the destination safely.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is DRIVING / COMMUTING 🚗.\n' +
+        'Politely inform the sender that {owner} is driving and will check messages after reaching the destination safely.'
       );
     case 'workout':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is AT THE GYM / WORKING OUT 🏋️.\n' +
-        'Inform the sender that Reduan is exercising and will reply after the workout.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is AT THE GYM / WORKING OUT 🏋️.\n' +
+        'Inform the sender that {owner} is exercising and will reply after the workout.'
       );
     case 'gaming':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is in a GAMING / CHILL SESSION 🎮.\n' +
-        'Inform the sender in a friendly tone that Reduan is gaming and will reply shortly.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is in a GAMING / CHILL SESSION 🎮.\n' +
+        'Inform the sender in a friendly tone that {owner} is gaming and will reply shortly.'
       );
     case 'travel':
       return (
-        'CURRENT STATUS & INSTRUCTION: Reduan is TRAVELLING / ON TOUR ✈️.\n' +
-        'Inform the sender warmly that Reduan is traveling and responses might be slightly delayed.'
+        'CURRENT STATUS & INSTRUCTION: {owner} is TRAVELLING / ON TOUR ✈️.\n' +
+        'Inform the sender warmly that {owner} is traveling and responses might be slightly delayed.'
       );
     case 'normal':
     default:
-      return 'CURRENT STATUS & INSTRUCTION: Normal Assistant Mode 🌸. Reduan is away from his phone right now.';
+      return 'CURRENT STATUS & INSTRUCTION: Normal Assistant Mode 🌸. {owner} is away from the phone right now.';
   }
 }
 

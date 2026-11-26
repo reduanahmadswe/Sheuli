@@ -1,3 +1,4 @@
+import { useAssistantName } from '../lib/identity.js';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Logo from '../components/Logo.jsx';
@@ -5,6 +6,7 @@ import ThemeToggle from '../components/ThemeToggle.jsx';
 import useAuth from '../hooks/useAuth.js';
 
 export default function Login() {
+  const assistant = useAssistantName();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,7 +38,7 @@ export default function Login() {
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <Logo size={64} animated />
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-brand">Sheuli</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight text-brand">{assistant}</h1>
             <p className="mt-1 text-sm text-muted">She blooms while you sleep.</p>
           </div>
         </div>
@@ -65,12 +67,12 @@ export default function Login() {
             disabled={loading || !password}
             className="mt-5 w-full rounded-xl bg-accent px-4 py-2.5 font-semibold text-white shadow-glow transition-all hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? 'Waking Sheuli…' : 'Enter'}
+            {loading ? `Waking ${assistant}…` : 'Enter'}
           </button>
         </form>
 
         <p className="mt-6 text-center text-xs text-muted/70">
-          🌸 Sheuli — your personal WhatsApp AI assistant
+          🌸 {assistant} — your personal WhatsApp AI assistant
         </p>
       </div>
     </div>
