@@ -1,3 +1,4 @@
+import { LuChevronUp, LuChevronDown } from 'react-icons/lu';
 import { useAssistantName } from '../lib/identity.js';
 import { useEffect, useState } from 'react';
 import api from '../lib/api.js';
@@ -69,7 +70,7 @@ function SummaryRow({ summary, expanded, onToggle }) {
           <span>{summary.contact_count} contacts</span>
           <span>{summary.message_count} msgs</span>
           <span className="rounded-full bg-line px-2 py-0.5">{summary.trigger}</span>
-          <span className="text-muted">{expanded ? '▲' : '▼'}</span>
+          <span className="text-muted">{expanded ? <LuChevronUp aria-hidden="true" /> : <LuChevronDown aria-hidden="true" />}</span>
         </div>
       </button>
       {expanded && (
@@ -148,7 +149,7 @@ export default function Logs() {
       <div className="inline-flex w-fit rounded-xl border border-line bg-soft p-1">
         {[
           { key: 'logs', label: 'Logs' },
-          { key: 'summaries', label: '🌅 Summaries' }
+          { key: 'summaries', label: 'Summaries' }
         ].map((t) => (
           <button
             key={t.key}

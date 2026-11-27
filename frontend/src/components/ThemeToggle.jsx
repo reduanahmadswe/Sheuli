@@ -1,3 +1,4 @@
+import { LuSun, LuMoon } from 'react-icons/lu';
 import { useState } from 'react';
 
 // The initial class is set by the inline script in index.html, so the page never
@@ -27,7 +28,7 @@ export default function ThemeToggle({ className = '' }) {
       title={label}
       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line bg-card text-lg transition hover:border-accent/50 ${className}`}
     >
-      {dark ? '☀️' : '🌙'}
+      {dark ? <LuSun aria-hidden="true" /> : <LuMoon aria-hidden="true" />}
     </button>
   );
 }

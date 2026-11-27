@@ -20,11 +20,11 @@ export function buildModeList(activeMode) {
   const sections = GROUPS.map(([title, ids]) => {
     const lines = ids.map((id) => {
       number += 1;
-      return `${number}. ${MODES[id].name}${id === activeMode ? ' ✅' : ''}`;
+      return `${number}. ${MODES[id].name}${id === activeMode ? ' (now)' : ''}`;
     });
     return `*${title}*\n${lines.join('\n')}`;
   });
-  return `📋 *Modes*\n\n${sections.join('\n\n')}\n\nSend /number or /name. Add a time if you like: /8 30m or /lunch 1h`;
+  return `*Modes*\n\n${sections.join('\n\n')}\n\nSend /number or /name. Add a time if you like: /8 30m or /lunch 1h`;
 }
 
 // Returns { type: 'list' }, { type: 'set', id, minutes } or { type: 'unknown' }.

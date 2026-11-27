@@ -72,7 +72,7 @@ export default function Login() {
         </form>
 
         <p className="mt-6 text-center text-xs text-muted/70">
-          🌸 {assistant} — your personal WhatsApp AI assistant
+          {assistant} — your personal WhatsApp AI assistant
         </p>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { LuFlower2, LuMoon, LuHouse, LuBus, LuShoppingCart, LuCoffee, LuClapperboard, LuScissors, LuFootprints, LuBatteryLow, LuHospital, LuCloudRain, LuPartyPopper, LuCupSoda, LuBrush, LuPhone, LuPlugZap, LuBookOpen, LuTent, LuBrain, LuSchool, LuBookMarked, LuNotebookPen, LuFlaskConical, LuBriefcase, LuCode, LuMoonStar, LuUtensils, LuBed, LuCar, LuDumbbell, LuGamepad2, LuPlane, LuBan, LuBuilding2, LuTarget, LuPresentation, LuMonitor, LuSandwich, LuAlarmClock, LuLaptop, LuTreePalm, LuMessageCircle, LuReply, LuUsers, LuDollarSign, LuTriangleAlert } from 'react-icons/lu';
 import { useAssistantName } from '../lib/identity.js';
 import { useEffect, useState } from 'react';
 import api from '../lib/api.js';
@@ -6,8 +7,8 @@ import getSocket from '../lib/socket.js';
 const STATUS_LABEL = {
   initializing: { text: 'Starting up…', color: 'bg-yellow-400' },
   qr: { text: 'Waiting for QR scan', color: 'bg-yellow-400' },
-  authenticated: { text: '✅ Authenticated — starting up…', color: 'bg-blue-400' },
-  loading: { text: '⏳ Authenticated — loading chats…', color: 'bg-blue-400' },
+  authenticated: { text: 'Authenticated — starting up…', color: 'bg-blue-400' },
+  loading: { text: 'Authenticated — loading chats…', color: 'bg-blue-400' },
   ready: { text: 'Connected', color: 'bg-emerald-400' },
   connected: { text: 'Connected', color: 'bg-emerald-400' },
   disconnected: { text: 'Disconnected — reconnecting', color: 'bg-red-400' },
@@ -21,25 +22,25 @@ const STATUS_LABEL = {
 // failed auto-recovery to get there).
 function getStatusDisplay(status, percent, switchingAccount, sessionRecoveryFailed) {
   if (switchingAccount && status !== 'qr') {
-    return { text: '🔄 Switching account — preparing a fresh QR…', color: 'bg-yellow-400' };
+    return { text: 'Switching account — preparing a fresh QR…', color: 'bg-yellow-400' };
   }
   if (status === 'qr' && sessionRecoveryFailed) {
     return { text: "Session couldn't be restored — scan the QR below to reconnect.", color: 'bg-red-400' };
   }
   if (status === 'loading') {
     return {
-      text: `⏳ Authenticated — loading chats… ${percent || 0}%`,
+      text: `Authenticated — loading chats… ${percent || 0}%`,
       color: 'bg-blue-400'
     };
   }
   return STATUS_LABEL[status] || STATUS_LABEL.initializing;
 }
 
-function StatCard({ icon, label, value, hint }) {
+function StatCard({ icon: Icon, label, value, hint }) {
   return (
     <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
       <p className="flex items-center gap-2 text-xs font-semibold text-white/70">
-        <span aria-hidden="true">{icon}</span>
+        <Icon className="h-4 w-4" aria-hidden="true" />
         {label}
       </p>
       <p className="mt-2 break-all text-2xl font-extrabold sm:text-3xl">{value}</p>
@@ -49,48 +50,48 @@ function StatCard({ icon, label, value, hint }) {
 }
 
 const MODE_OPTIONS = [
-  { id: 'normal', label: 'Normal 🌸' },
-  { id: 'sleep', label: 'Sleep 🌙' },
-  { id: 'home', label: 'At Home 🏡' },
-  { id: 'commute', label: 'Commute 🚌' },
-  { id: 'shopping', label: 'Market 🛒' },
-  { id: 'adda', label: 'Adda ☕' },
-  { id: 'movie', label: 'Movie 🎬' },
-  { id: 'barber', label: 'Salon 💈' },
-  { id: 'errands', label: 'Errands 🏃' },
-  { id: 'lowbat', label: 'Low Bat 🪫' },
-  { id: 'medical', label: 'Medical 🏥' },
-  { id: 'rainy', label: 'Rainy/Jam 🌧️' },
-  { id: 'party', label: 'Party 🎉' },
-  { id: 'teabreak', label: 'Tea Break 🫖' },
-  { id: 'chores', label: 'Chores 🧹' },
-  { id: 'oncall', label: 'On Call 📞' },
-  { id: 'charging', label: 'Charging 🔌' },
-  { id: 'reading', label: 'Reading 📖' },
-  { id: 'outdoors', label: 'Outdoors 🏕️' },
-  { id: 'thinking', label: 'Thinking 🧠' },
-  { id: 'class', label: 'Class 🏫' },
-  { id: 'study', label: 'Study 📚' },
-  { id: 'exam', label: 'Exam 📝' },
-  { id: 'lab', label: 'Lab 🔬' },
-  { id: 'meeting', label: 'Meeting 💼' },
-  { id: 'coding', label: 'Coding 💻' },
-  { id: 'prayer', label: 'Prayer 🕌' },
-  { id: 'dining', label: 'Dining 🍽️' },
-  { id: 'resting', label: 'Resting 🤒' },
-  { id: 'driving', label: 'Driving 🚗' },
-  { id: 'workout', label: 'Gym 🏋️' },
-  { id: 'gaming', label: 'Gaming 🎮' },
-  { id: 'travel', label: 'Travel ✈️' },
-  { id: 'dnd', label: 'DND 🛑' },
-  { id: 'office', label: 'At Office 🏢' },
-  { id: 'focus', label: 'Focus Work 🎯' },
-  { id: 'presentation', label: 'Presentation 📊' },
-  { id: 'onlinemeeting', label: 'Online Meet 🖥️' },
-  { id: 'lunch', label: 'Lunch Break 🍱' },
-  { id: 'deadline', label: 'Deadline ⏰' },
-  { id: 'wfh', label: 'Work From Home 🏠' },
-  { id: 'leave', label: 'On Leave 🌴' }
+  { id: 'normal', label: 'Normal', icon: LuFlower2 },
+  { id: 'sleep', label: 'Sleep', icon: LuMoon },
+  { id: 'home', label: 'At Home', icon: LuHouse },
+  { id: 'commute', label: 'Commute', icon: LuBus },
+  { id: 'shopping', label: 'Market', icon: LuShoppingCart },
+  { id: 'adda', label: 'Adda', icon: LuCoffee },
+  { id: 'movie', label: 'Movie', icon: LuClapperboard },
+  { id: 'barber', label: 'Salon', icon: LuScissors },
+  { id: 'errands', label: 'Errands', icon: LuFootprints },
+  { id: 'lowbat', label: 'Low Bat', icon: LuBatteryLow },
+  { id: 'medical', label: 'Medical', icon: LuHospital },
+  { id: 'rainy', label: 'Rainy/Jam', icon: LuCloudRain },
+  { id: 'party', label: 'Party', icon: LuPartyPopper },
+  { id: 'teabreak', label: 'Tea Break', icon: LuCupSoda },
+  { id: 'chores', label: 'Chores', icon: LuBrush },
+  { id: 'oncall', label: 'On Call', icon: LuPhone },
+  { id: 'charging', label: 'Charging', icon: LuPlugZap },
+  { id: 'reading', label: 'Reading', icon: LuBookOpen },
+  { id: 'outdoors', label: 'Outdoors', icon: LuTent },
+  { id: 'thinking', label: 'Thinking', icon: LuBrain },
+  { id: 'class', label: 'Class', icon: LuSchool },
+  { id: 'study', label: 'Study', icon: LuBookMarked },
+  { id: 'exam', label: 'Exam', icon: LuNotebookPen },
+  { id: 'lab', label: 'Lab', icon: LuFlaskConical },
+  { id: 'meeting', label: 'Meeting', icon: LuBriefcase },
+  { id: 'coding', label: 'Coding', icon: LuCode },
+  { id: 'prayer', label: 'Prayer', icon: LuMoonStar },
+  { id: 'dining', label: 'Dining', icon: LuUtensils },
+  { id: 'resting', label: 'Resting', icon: LuBed },
+  { id: 'driving', label: 'Driving', icon: LuCar },
+  { id: 'workout', label: 'Gym', icon: LuDumbbell },
+  { id: 'gaming', label: 'Gaming', icon: LuGamepad2 },
+  { id: 'travel', label: 'Travel', icon: LuPlane },
+  { id: 'dnd', label: 'DND', icon: LuBan },
+  { id: 'office', label: 'At Office', icon: LuBuilding2 },
+  { id: 'focus', label: 'Focus Work', icon: LuTarget },
+  { id: 'presentation', label: 'Presentation', icon: LuPresentation },
+  { id: 'onlinemeeting', label: 'Online Meet', icon: LuMonitor },
+  { id: 'lunch', label: 'Lunch Break', icon: LuSandwich },
+  { id: 'deadline', label: 'Deadline', icon: LuAlarmClock },
+  { id: 'wfh', label: 'Work From Home', icon: LuLaptop },
+  { id: 'leave', label: 'On Leave', icon: LuTreePalm }
 ];
 
 const CATEGORIES = [
@@ -314,7 +315,8 @@ export default function Overview() {
     <div className="flex flex-col gap-6 sm:gap-8">
       {stats.costLimitReached && (
         <div className="rounded-2xl border border-yellow-500/40 bg-yellow-400/10 px-4 py-3 text-sm text-yellow-800 dark:text-yellow-200">
-          ⚠️ Today's API cost limit (${stats.costLimitDaily.toFixed(2)}) has been reached — auto-replies are paused until
+          <LuTriangleAlert className="mr-1 inline" aria-hidden="true" />
+          Today's API cost limit (${stats.costLimitDaily.toFixed(2)}) has been reached — auto-replies are paused until
           local midnight. Raise the limit in Settings if you need {assistant} back sooner.
         </div>
       )}
@@ -340,7 +342,7 @@ export default function Overview() {
           <div className="mt-3 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <p className={`text-xl font-extrabold ${active ? 'text-accent-strong' : 'text-brand'}`}>
-                {active ? `${assistant} is awake 🌸` : `${assistant} is resting 🌙`}
+                {active ? `${assistant} is awake` : `${assistant} is resting`}
               </p>
               <p className="mt-1 text-xs text-muted">{subtitle}</p>
               {isScheduleMode && <p className="mt-1 text-xs text-muted">Schedule mode is in control right now.</p>}
@@ -388,7 +390,8 @@ export default function Overview() {
           )}
           {pairingRejectedHint && (
             <p className="max-w-xs text-xs font-medium text-yellow-700 dark:text-yellow-300">
-              ⚠️ Last pairing was accepted, then instantly rejected by WhatsApp — likely a web-version/library
+              <LuTriangleAlert className="mr-1 inline" aria-hidden="true" />
+          Last pairing was accepted, then instantly rejected by WhatsApp — likely a web-version/library
               incompatibility, not an account issue. Try updating whatsapp-web.js, or set WA_WEB_VERSION as a stopgap.
             </p>
           )}
@@ -404,11 +407,11 @@ export default function Overview() {
       <section className="band p-5 sm:p-8">
         <h2 className="text-xl font-extrabold">Today at a glance</h2>
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard icon="💬" label="Messages" value={stats.messagesReceived} />
-          <StatCard icon="↩️" label="Replies sent" value={stats.repliesSent} />
-          <StatCard icon="👥" label="Active chats" value={stats.activeConversations} />
+          <StatCard icon={LuMessageCircle} label="Messages" value={stats.messagesReceived} />
+          <StatCard icon={LuReply} label="Replies sent" value={stats.repliesSent} />
+          <StatCard icon={LuUsers} label="Active chats" value={stats.activeConversations} />
           <StatCard
-            icon="💵"
+            icon={LuDollarSign}
             label="API cost"
             value={`$${stats.estimatedCostToday.toFixed(4)}`}
             hint={`of $${stats.costLimitDaily.toFixed(2)} daily limit`}
@@ -460,8 +463,6 @@ export default function Overview() {
         </div>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 md:grid-cols-6 lg:grid-cols-8">
           {modesIn(category).map((item) => {
-            // "Sleep 🌙" -> name and icon, shown stacked.
-            const cut = item.label.lastIndexOf(' ');
             const selected = activeMode === item.id;
             return (
               <button
@@ -474,10 +475,8 @@ export default function Overview() {
                     : 'border-line bg-card text-ink hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-card'
                 }`}
               >
-                <span className="text-xl leading-none" aria-hidden="true">
-                  {item.label.slice(cut + 1)}
-                </span>
-                {item.label.slice(0, cut)}
+                <item.icon className={`h-6 w-6 ${selected ? '' : 'text-accent'}`} aria-hidden="true" />
+                {item.label}
               </button>
             );
           })}

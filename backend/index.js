@@ -140,7 +140,7 @@ server.on('error', (err) => {
 // Docker generally) where the platform's proxy connects from outside the
 // container's loopback interface.
 server.listen(config.port, '0.0.0.0', () => {
-  logger.info(`🌸 Sheuli dashboard + API listening on 0.0.0.0:${config.port}`);
+  logger.info(`Sheuli dashboard + API listening on 0.0.0.0:${config.port}`);
   setSocketIo(io);
   startBackgroundJobs();
   initWhatsApp(io).catch((err) => {

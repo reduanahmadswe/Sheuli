@@ -137,7 +137,7 @@ const LEGACY_RATE_LIMIT_PER_HOUR = '3';
   }
 
   if (Object.keys(seeded).length > 0) {
-    logger.info({ seeded }, '🌱 Fresh database detected — seeded first-run default settings');
+    logger.info({ seeded }, 'Fresh database detected — seeded first-run default settings');
   }
 }
 

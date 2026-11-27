@@ -1,3 +1,4 @@
+import { LuHouse, LuMessageCircle, LuUsers, LuSettings, LuScrollText } from 'react-icons/lu';
 import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import Logo from './Logo.jsx';
@@ -7,11 +8,11 @@ import getSocket from '../lib/socket.js';
 import { setAssistantName, useAssistantName } from '../lib/identity.js';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Overview', short: 'Home', icon: '🌸', end: true },
-  { to: '/messages', label: 'Live Messages', short: 'Chats', icon: '💬' },
-  { to: '/contacts', label: 'Contacts', short: 'Contacts', icon: '👥' },
-  { to: '/settings', label: 'Settings', short: 'Settings', icon: '⚙️' },
-  { to: '/logs', label: 'Logs', short: 'Logs', icon: '📜' }
+  { to: '/', label: 'Overview', short: 'Home', icon: LuHouse, end: true },
+  { to: '/messages', label: 'Live Messages', short: 'Chats', icon: LuMessageCircle },
+  { to: '/contacts', label: 'Contacts', short: 'Contacts', icon: LuUsers },
+  { to: '/settings', label: 'Settings', short: 'Settings', icon: LuSettings },
+  { to: '/logs', label: 'Logs', short: 'Logs', icon: LuScrollText }
 ];
 
 // FIX 5: small live indicator for the dashboard's own WebSocket connection —
@@ -122,9 +123,7 @@ export default function Layout({ children }) {
               }`
             }
           >
-            <span className="text-xl leading-none" aria-hidden="true">
-              {item.icon}
-            </span>
+            <item.icon className="h-5 w-5" aria-hidden="true" />
             {item.short}
           </NavLink>
         ))}

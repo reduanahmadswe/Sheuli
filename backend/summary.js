@@ -1,4 +1,4 @@
-// FEATURE 4: 🌅 Daily Summary. Collects everything that happened in personal
+// FEATURE 4: Daily Summary. Collects everything that happened in personal
 // chats since the last summary, condenses it with gpt-4o-mini (chunking in
 // stages if the transcript is long), and sends the result to the owner's own
 // "Message Yourself" WhatsApp chat. Triggered by a scheduled time-of-day
@@ -21,7 +21,7 @@ export function setSocketIo(io) {
 
 const CHUNK_CHAR_LIMIT = 6000;
 const MAX_SUMMARY_CHARS = 3500; // safety net well above the ~1500-char guidance given to the model
-const EMPTY_FRIENDLY_MESSAGE = '🌸 Good morning! No messages while you were away.';
+const EMPTY_FRIENDLY_MESSAGE = 'Good morning! No messages while you were away.';
 
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 function toBanglaNumber(n) {
@@ -145,14 +145,15 @@ const finalPrompt = ({ assistant, owner }) => `তুমি ${assistant}, ${owne
 
 তোমার কাজ: এই তথ্য থেকে ${owner}-এর জন্য একটা সংক্ষিপ্ত বাংলা summary বানানো, নিচের তিনটা section-এ ভাগ করে (ঠিক এই heading-গুলো ব্যবহার করবে, heading না বদলে):
 
-🔴 গুরুত্বপূর্ণ / action দরকার:
-🟡 Reply করা ভালো:
-⚪ Casual / কিছু করা লাগবে না:
+*গুরুত্বপূর্ণ / action দরকার:*
+*Reply করা ভালো:*
+*Casual / কিছু করা লাগবে না:*
 
 Rules (অবশ্যই মানতে হবে):
 - শুধু নিচে দেওয়া তথ্য থেকেই লিখবে, কোনো message বা contact কখনো বানিয়ে লিখবে না।
 - প্রতিটা bullet এক লাইনে রাখবে, "• নাম — বিস্তারিত" এই format-এ।
-- ⚪ Casual section-এ প্রতিটা contact আলাদা bullet না দিয়ে একসাথে সংক্ষেপে বলবে, যেমন "• ৮ জন — সালাম/হাই ধরনের message, reply দেওয়া হয়েছে।"
+- কোনো emoji ব্যবহার করবে না।
+- Casual section-এ প্রতিটা contact আলাদা bullet না দিয়ে একসাথে সংক্ষেপে বলবে, যেমন "• ৮ জন — সালাম/হাই ধরনের message, reply দেওয়া হয়েছে।"
 - স্বাভাবিক, কথ্য বাংলায় লিখবে (${owner}-এর নিজের ভাষার মতো)।
 - পুরো output অবশ্যই ১৫০০ character-এর মধ্যে রাখবে।
 - শুধু উপরের তিনটা section-ই output করবে — অন্য কোনো heading, ভূমিকা, conclusion, বা "মোট" সংখ্যা লিখবে না (সেটা আলাদাভাবে যোগ করা হবে)।
@@ -206,8 +207,8 @@ export async function buildDailySummaryText({ sinceIso, untilIso, now }) {
 
   const dateLabel = formatSummaryDateLabel(now, config.timezone);
   const header =
-    `🌅 ${names().assistant} Daily Summary — ${dateLabel}\n\n` +
-    `📊 মোট: ${toBanglaNumber(contactCount)} জন থেকে ${toBanglaNumber(totalIncoming)}টা message, আমি ${toBanglaNumber(
+    `*${names().assistant} Daily Summary* — ${dateLabel}\n\n` +
+    `মোট: ${toBanglaNumber(contactCount)} জন থেকে ${toBanglaNumber(totalIncoming)}টা message, আমি ${toBanglaNumber(
       totalReplied
     )}টার reply দিয়েছি।`;
 

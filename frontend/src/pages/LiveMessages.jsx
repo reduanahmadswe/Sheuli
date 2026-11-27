@@ -1,3 +1,4 @@
+import { LuMic, LuArrowLeft } from 'react-icons/lu';
 import { useAssistantName } from '../lib/identity.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../lib/api.js';
@@ -121,7 +122,8 @@ function MessageBubble({ msg }) {
         >
           {isVoiceMsg && (
             <div className="flex items-center gap-1.5 text-xs font-semibold mb-1 opacity-80">
-              <span>🎙️ Voice Note</span>
+              <LuMic aria-hidden="true" />
+              <span>Voice Note</span>
             </div>
           )}
           {msg.body}
@@ -308,7 +310,7 @@ export default function LiveMessages() {
                   className="rounded-lg p-1.5 text-muted hover:bg-soft hover:text-ink md:hidden"
                   aria-label="Back to chat list"
                 >
-                  ←
+                  <LuArrowLeft aria-hidden="true" />
                 </button>
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-soft text-xs font-semibold text-accent-strong ring-1 ring-line">
                   {initials(getDisplayName(selectedChat.name, selectedChat.number, selectedChat.contactId))}

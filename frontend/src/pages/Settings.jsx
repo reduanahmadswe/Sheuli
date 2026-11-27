@@ -1,3 +1,4 @@
+import { LuSlidersHorizontal, LuMessageSquare, LuSunrise, LuSmartphone, LuCheck, LuLock, LuTriangleAlert } from 'react-icons/lu';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api.js';
@@ -7,10 +8,10 @@ import { useAssistantName } from '../lib/identity.js';
 // Every change on this page saves by itself; a small "Saved" note confirms it.
 
 const TABS = [
-  { id: 'general', label: 'General', icon: '🌸' },
-  { id: 'replies', label: 'Replies', icon: '💬' },
-  { id: 'summary', label: 'Summary', icon: '🌅' },
-  { id: 'account', label: 'Account', icon: '📱' }
+  { id: 'general', label: 'General', icon: LuSlidersHorizontal },
+  { id: 'replies', label: 'Replies', icon: LuMessageSquare },
+  { id: 'summary', label: 'Summary', icon: LuSunrise },
+  { id: 'account', label: 'Account', icon: LuSmartphone }
 ];
 
 const MODEL_OPTIONS = [
@@ -118,7 +119,7 @@ function Choice({ selected, onClick, title, text }) {
     >
       <span className="flex items-center justify-between gap-2 text-sm font-bold text-ink">
         {title}
-        {selected && <span className="text-accent">✓</span>}
+        {selected && <LuCheck className="shrink-0 text-accent" aria-hidden="true" />}
       </span>
       <span className="mt-1 block text-xs text-muted">{text}</span>
     </button>
@@ -242,7 +243,7 @@ export default function Settings() {
     try {
       const { data } = await api.put('/settings', changes);
       setSettings(data);
-      flash('Saved ✓');
+      flash('Saved');
     } catch (err) {
       flash(err.response?.data?.error || 'Could not save. Please try again.', true);
     }
@@ -263,7 +264,7 @@ export default function Settings() {
         scheduleDays: next.scheduleDays
       });
       setSchedule(data);
-      flash('Saved ✓');
+      flash('Saved');
     } catch (err) {
       flash(err.response?.data?.error || 'Could not save the timetable.', true);
     }
@@ -321,7 +322,7 @@ export default function Settings() {
               tab === item.id ? 'bg-accent text-white' : 'text-muted hover:bg-soft hover:text-ink'
             }`}
           >
-            <span aria-hidden="true">{item.icon}</span>
+            <item.icon className="h-4 w-4" aria-hidden="true" />
             {item.label}
           </button>
         ))}
@@ -461,7 +462,10 @@ export default function Settings() {
               </select>
             </Row>
           </Card>
-          <p className="text-xs text-muted">🔒 Only personal chats get replies. Groups, channels and broadcasts are always ignored.</p>
+          <p className="flex items-start gap-2 text-xs text-muted">
+            <LuLock className="mt-0.5 shrink-0" aria-hidden="true" />
+            Only personal chats get replies. Groups, channels and broadcasts are always ignored.
+          </p>
         </>
       )}
 
@@ -532,7 +536,8 @@ export default function Settings() {
               <div className="mt-4 flex flex-col items-center gap-2 pt-4 text-center">
                 {pairingRejectedHint && (
                   <p className="max-w-xs text-xs font-medium text-yellow-700 dark:text-yellow-300">
-                    ⚠️ WhatsApp rejected the last link right after accepting it. Try updating whatsapp-web.js.
+                    <LuTriangleAlert className="mr-1 inline" aria-hidden="true" />
+                    WhatsApp rejected the last link right after accepting it. Try updating whatsapp-web.js.
                   </p>
                 )}
                 <div className="rounded-2xl border border-line bg-white p-3">
@@ -578,6 +583,7 @@ export default function Settings() {
             notice.error ? 'bg-red-600' : 'bg-emerald-600'
           }`}
         >
+          {!notice.error && <LuCheck className="mr-1 inline" aria-hidden="true" />}
           {notice.text}
         </div>
       )}

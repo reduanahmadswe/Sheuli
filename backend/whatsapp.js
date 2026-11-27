@@ -257,7 +257,7 @@ async function handleModeCommand(message, body) {
     return;
   }
   if (request.type === 'unknown') {
-    await message.reply('🤔 No such command. Send / to see the mode list.');
+    await message.reply('No such command. Send / to see the mode list.');
     return;
   }
 
@@ -270,8 +270,8 @@ async function handleModeCommand(message, body) {
     ? ` until ${new Date(settings.modeUntil).toLocaleTimeString('en-US', { timeZone: settings.timezone, hour: 'numeric', minute: '2-digit' })}`
     : '';
   // A mode alone sends nothing while auto-reply is off, so say so.
-  const off = isSheuliActive(settings) ? '' : `\n⚠️ ${settings.assistantName} is OFF — send /on to start replying.`;
-  await message.reply(`✅ Mode: ${MODES[request.id].name}${until}${off}`);
+  const off = isSheuliActive(settings) ? '' : `\n${settings.assistantName} is OFF — send /on to start replying.`;
+  await message.reply(`Mode: ${MODES[request.id].name}${until}${off}`);
 }
 
 async function handleSelfCommand(message, body) {
@@ -286,7 +286,7 @@ async function handleSelfCommand(message, body) {
     } catch (err) {
       logger.error({ err: err?.message || err }, 'Manual /summary command failed');
       try {
-        await message.reply('😔 Summary বানাতে সমস্যা হয়েছে, একটু পরে আবার চেষ্টা করো।');
+        await message.reply('Summary বানাতে সমস্যা হয়েছে, একটু পরে আবার চেষ্টা করো।');
       } catch {
         // Ignore — best-effort error notice only.
       }
@@ -299,10 +299,10 @@ async function handleSelfCommand(message, body) {
       const parsed = parseNaturalLanguageEvent(body);
       const saved = saveCalendarEvent(getDb(), parsed);
       await message.reply(
-        `✅ Event scheduled!\n📌 **${saved.summary}**\n📅 ${saved.displayDate} at ${saved.displayTime}\nAdded to your Calendar.`
+        `Event scheduled!\n**${saved.summary}**\n${saved.displayDate} at ${saved.displayTime}\nAdded to your Calendar.`
       );
     } catch (err) {
-      await message.reply(`❌ Schedule save failed: ${err.message}`);
+      await message.reply(`Schedule save failed: ${err.message}`);
     }
     return true;
   }
@@ -319,7 +319,7 @@ async function handleSelfCommand(message, body) {
   // anything — the schedule is the single source of truth for when Sheuli replies.
   if (settings.mode === 'schedule') {
     await message.reply(
-      `🌙 ${settings.assistantName} is in schedule mode (${settings.scheduleStart}–${settings.scheduleEnd}). ` +
+      `${settings.assistantName} is in schedule mode (${settings.scheduleStart}–${settings.scheduleEnd}). ` +
         'Switch to manual mode from the dashboard to control it manually.'
     );
     return true;
@@ -328,13 +328,13 @@ async function handleSelfCommand(message, body) {
   if (command === '/on') {
     setSetting('autoReplyEnabled', true);
     ioRef?.emit('settings:updated', getAllSettings());
-    await message.reply(`🌸 ${settings.assistantName} is now ON`);
+    await message.reply(`${settings.assistantName} is now ON`);
     return true;
   }
 
   setSetting('autoReplyEnabled', false);
   ioRef?.emit('settings:updated', getAllSettings());
-  await message.reply(`🌙 ${settings.assistantName} is now OFF`);
+  await message.reply(`${settings.assistantName} is now OFF`);
   return true;
 }
 
@@ -679,7 +679,7 @@ async function replyToContact({
 
   // Check for Emergency Override during Sleep/Exam modes
   if ((currentActivity.mode === 'sleep' || currentActivity.mode === 'exam') && isEmergencyMessage(incomingBody)) {
-    logger.warn({ chatId, incomingBody }, '🚨 EMERGENCY MESSAGE DETECTED! Notifying owner.');
+    logger.warn({ chatId, incomingBody }, 'EMERGENCY MESSAGE DETECTED! Notifying owner.');
     ioRef?.emit('emergency:alert', { chatId, contactName, message: incomingBody });
   }
 
