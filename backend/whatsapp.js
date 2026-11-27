@@ -890,6 +890,7 @@ function cleanAllLockfiles(dirPath) {
 }
 
 export async function destroyClient() {
+  cancelPairingReload();
   if (startupWatchdog) {
     clearTimeout(startupWatchdog);
     startupWatchdog = null;
@@ -1058,6 +1059,37 @@ async function doInitWhatsApp(io) {
   return client;
 }
 
+// Right after a QR link, WhatsApp Web navigates away from its sign-in page and
+// the message hooks can be lost: the dashboard says "Connected" but nothing
+// arrives. Reloading the client once, keeping the session, attaches them the
+// same way a server restart does.
+const PAIRING_RELOAD_DELAY_MS = 45 * 1000;
+let freshPairing = false;
+let pairingReloadTimer = null;
+
+function cancelPairingReload() {
+  clearTimeout(pairingReloadTimer);
+  pairingReloadTimer = null;
+}
+
+function schedulePairingReload() {
+  cancelPairingReload();
+  logger.info(`New account linked — reloading the WhatsApp client in ${PAIRING_RELOAD_DELAY_MS / 1000}s`);
+  // The delay lets WhatsApp finish saving the new session first.
+  pairingReloadTimer = setTimeout(async () => {
+    pairingReloadTimer = null;
+    if (switchingAccount || isResetting || !client) return;
+    freshPairing = false;
+    try {
+      logger.info('Reloading the WhatsApp client after linking');
+      await destroyClient();
+      await initWhatsApp(ioRef);
+    } catch (err) {
+      logger.error({ err: err?.message || err }, 'Reload after linking failed');
+    }
+  }, PAIRING_RELOAD_DELAY_MS);
+}
+
 function stopAuthenticatedWatchdog() {
   if (authWatchdog) {
     clearTimeout(authWatchdog);
@@ -1140,6 +1172,8 @@ function attachListeners(clientInstance) {
   });
 
   clientInstance.on('qr', async (qr) => {
+    freshPairing = true;
+    cancelPairingReload();
     if (startupWatchdog) {
       clearTimeout(startupWatchdog);
       startupWatchdog = null;
@@ -1185,6 +1219,7 @@ function attachListeners(clientInstance) {
     lastAuthenticatedAt = Date.now();
     pairingRejectedHint = false;
     startAuthenticatedWatchdog();
+    if (freshPairing) schedulePairingReload();
   });
 
   clientInstance.on('ready', () => {
@@ -1239,6 +1274,7 @@ function attachListeners(clientInstance) {
   });
 
   clientInstance.on('disconnected', async (reason) => {
+    cancelPairingReload();
     if (startupWatchdog) {
       clearTimeout(startupWatchdog);
       startupWatchdog = null;
@@ -1393,6 +1429,8 @@ export async function logoutWhatsApp({ clearHistory = false } = {}) {
     return { ok: false, error: 'Account switch already in progress' };
   }
   switchingAccount = true;
+  cancelPairingReload();
+  freshPairing = false;
   // FIX 2.2/3: a manual dashboard logout is an explicit fresh start — clear
   // any loop-guard and pairing-rejection state left over from a prior
   // automatic recovery attempt.
