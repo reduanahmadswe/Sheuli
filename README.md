@@ -204,6 +204,17 @@ sheuli/
 └── package.json
 ```
 
+## Deploy on Railway
+
+Railway builds from the `Dockerfile` (Node 20 + Chromium). Keep the GitHub repo private.
+
+1. **New Project → Deploy from GitHub repo** and pick this repo.
+2. Add a **Volume** to the service with mount path `/app/storage`. Without it, every deploy loses the
+   WhatsApp session and database.
+3. Under **Variables**, add `OPENAI_API_KEY`, `DASHBOARD_PASSWORD`, `SESSION_SECRET`,
+   `TIMEZONE=Asia/Dhaka`, `TZ=Asia/Dhaka` and `STORAGE_DIR=/app/storage`. Do not set `PORT`.
+4. **Settings → Networking → Generate Domain**, open it, log in and scan the QR code.
+
 ## Troubleshooting
 
 - **QR code never appears / Puppeteer crashes**: almost always a missing Chromium

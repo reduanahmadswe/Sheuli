@@ -1,0 +1,16 @@
+node_modules
+backend/node_modules
+frontend/node_modules
+frontend/dist
+.env
+.env.*
+!.env.example
+.wwebjs_auth
+.wwebjs_cache
+data
+backups
+logs
+.git
+.claude
+*.log
+.DS_Store
