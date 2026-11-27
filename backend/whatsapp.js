@@ -19,6 +19,7 @@ import {
   getActivitySystemInstruction,
   isEmergencyMessage
 } from './modes.js';
+import { readChatDirectory } from './chatDirectory.js';
 import { buildModeList, parseModeCommand } from './modeCommands.js';
 import { parseNaturalLanguageEvent, saveCalendarEvent, getScheduleSummaryForDate } from './services/googleCalendar.js';
 import {
@@ -1532,7 +1533,18 @@ export async function logoutWhatsApp({ clearHistory = false } = {}) {
   }
 }
 
-export async function syncContactsFromWhatsApp() {
+let syncingContacts = null;
+
+// A second caller (the dashboard button during the startup sync) joins the
+// run already in progress.
+export function syncContactsFromWhatsApp() {
+  syncingContacts ||= runContactSync().finally(() => {
+    syncingContacts = null;
+  });
+  return syncingContacts;
+}
+
+async function runContactSync() {
   if (!client || (connectionStatus !== 'ready' && connectionStatus !== 'connected')) {
     logger.warn('WhatsApp client is not ready for contact sync');
     return { ok: false, count: 0 };
@@ -1543,41 +1555,19 @@ export async function syncContactsFromWhatsApp() {
 
   try {
     logger.info('Syncing contacts & chat names from WhatsApp...');
-    const chats = await client.getChats();
-    let count = 0;
+    const entries = await client.pupPage.evaluate(readChatDirectory);
 
-    for (const chat of chats) {
-      const chatId = chat.id._serialized;
-      const isGroup = Boolean(chat.isGroup || chatId.endsWith('@g.us') || chatId.endsWith('@newsletter'));
-
-      let name = chat.name || null;
-      let number = chatId.replace('@c.us', '').replace('@lid', '').replace('@g.us', '');
-
-      try {
-        const waContact = await chat.getContact();
-        if (waContact) {
-          const rawName = waContact.name || waContact.pushname || waContact.shortName || waContact.verifiedName || name;
-          if (rawName && !isRawId(rawName)) {
-            name = rawName.trim();
-          }
-          if (waContact.number && !waContact.number.includes('@')) {
-            number = waContact.number;
-          } else if (waContact.id?._serialized && waContact.id._serialized.endsWith('@c.us')) {
-            number = waContact.id._serialized.replace('@c.us', '');
-          }
-        }
-      } catch {}
-
-      if (name && isRawId(name)) {
-        name = null;
+    getDb().transaction(() => {
+      for (const { id, name, number } of entries) {
+        const isGroup = id.endsWith('@g.us') || id.endsWith('@newsletter');
+        // A title that is only a phone number is not a name.
+        const realName = name && !isRawId(name) && !/^\+?[\d\s()-]+$/.test(name) ? name.trim() : null;
+        upsertContact({ id, name: realName, number, isGroup });
       }
+    })();
 
-      upsertContact({ id: chatId, name, number, isGroup });
-      count += 1;
-    }
-
-    logger.info({ count }, 'Finished syncing contacts & chat names from WhatsApp');
-    return { ok: true, count };
+    logger.info({ count: entries.length }, 'Finished syncing contacts & chat names from WhatsApp');
+    return { ok: true, count: entries.length };
   } catch (err) {
     logger.warn({ err: err?.message || err }, 'Contact sync deferred (WhatsApp chat store populating)');
     return { ok: false, error: err?.message || 'Sync failed' };
